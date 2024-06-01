@@ -22,7 +22,7 @@ export function init() {
       sender,
       sendResponse: (response?: MessageResponse) => void,
     ) => {
-      console.log("message", message, sender);
+      console.log("message", message.type);
 
       switch (message.type) {
         case MessageTypeEnum.TRANSLATE:

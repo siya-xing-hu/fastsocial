@@ -2,9 +2,9 @@ import logger from "../common/logging";
 
 // 配置对象
 const openConfig = {
-  openaiApiKey: "",
-  openaiOrganization: "",
-  openaiChatModel: "gpt-3.5-turbo",
+  apiKey: "",
+  org: "",
+  model: "gpt-3.5-turbo",
 };
 
 export default openConfig;
@@ -13,17 +13,17 @@ export default openConfig;
 export async function initOpenAI() {
   try {
     // 从 chrome.storage.local 获取数据
-    const { openaiApiKey, openaiOrganization, openaiChatModel } = await chrome
+    const { apiKey, org, model } = await chrome
       .storage.local.get([
-        "openaiApiKey",
-        "openaiOrganization",
-        "openaiChatModel",
+        "apiKey",
+        "org",
+        "model",
       ]);
 
     // 更新配置对象
-    if (openaiApiKey) openConfig.openaiApiKey = openaiApiKey;
-    if (openaiOrganization) openConfig.openaiOrganization = openaiOrganization;
-    if (openaiChatModel) openConfig.openaiChatModel = openaiChatModel;
+    if (apiKey) openConfig.apiKey = apiKey;
+    if (org) openConfig.org = org;
+    if (model) openConfig.model = model;
 
     logger.log("OpenAI configuration initialized:", openConfig);
   } catch (error) {

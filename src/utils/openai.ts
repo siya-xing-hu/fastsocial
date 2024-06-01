@@ -21,23 +21,23 @@ export async function openaiCreate(
   messageData: any,
   jsonFormat: boolean = true,
 ): Promise<any> {
-  if (!openConfig.openaiApiKey || !openConfig.openaiChatModel) {
+  if (!openConfig.apiKey || !openConfig.model) {
     throw new Error("OpenAI config error!");
   }
 
   const reqBody = {
-    model: openConfig.openaiChatModel,
+    model: openConfig.model,
     messages: messageData,
     response_format: jsonFormat ? { type: "json_object" } : {},
   };
 
   const headers: HeadersInit = {
-    "Authorization": `Bearer ${openConfig.openaiApiKey}`,
+    "Authorization": `Bearer ${openConfig.apiKey}`,
     "Content-Type": "application/json",
   };
 
-  if (openConfig.openaiOrganization) {
-    headers["Openai-Organization"] = openConfig.openaiOrganization;
+  if (openConfig.org) {
+    headers["Openai-Organization"] = openConfig.org;
   }
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
