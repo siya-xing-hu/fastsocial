@@ -1,12 +1,7 @@
-import {
-  ButtonTag,
-  isContent,
-  MessageType,
-  setInputText,
-} from "../utils/common";
-import { generateContent } from "./util/sendBackground";
+import { isContent, setInputText } from "../utils/common";
 import {
   ButtonData,
+  buttonList,
   ButtonLocationEnum,
   createButtonContainer,
   HandlerParams,
@@ -14,27 +9,65 @@ import {
 import { createDialogContainer } from "./dialog";
 import { execObserver } from "./util/mutationObserver";
 import { translateContent } from "./translate";
+import { supabaseWrapper } from "../config/supabase-client";
+import { SystemTemplate } from "../common/entities";
+import { TemplateTypeEnum } from "../common/enums";
+import {
+  AIGenarateMessage,
+  MessageTypeEnum,
+  sendMessage,
+} from "../common/runtime-message";
+import logger from "../common/logging";
 
 export const translateConfig = {
   xTranslate: false,
 };
 
-export async function ttTwitterInit(): Promise<void> {
-  execObserver(document.body, async () => {
-    return await ttTwitterPost();
-  });
+enum XUrlEnum {
+  HOME = "/home",
+  POST = "/compose/post",
+  MESSAGES = "^/messages/[^/]+$", // 动态路径使用正则表达式
+  OTHER = "/other",
+}
 
-  execObserver(document.body, async () => {
-    return await ttTwitterReply();
-  });
+function getXUrlEnum(url: string): XUrlEnum {
+  const urlPath = new URL(url).pathname; // 提取 URL 路径
+  // 获取所有枚举值
+  const values = Object.values(XUrlEnum);
+  // 检查 urlPath 是否以某个枚举值结尾
+  for (const value of values) {
+    if (value.startsWith("^")) { // 如果枚举值是正则表达式
+      const regex = new RegExp(value);
+      if (regex.test(urlPath)) {
+        return value as XUrlEnum;
+      }
+    } else if (urlPath.endsWith(value)) { // 静态路径匹配
+      return value as XUrlEnum;
+    }
+  }
+  return XUrlEnum.OTHER;
+}
 
-  execObserver(document.body, async () => {
-    return await ttTwitterDM();
-  });
-
-  execObserver(document.body, async () => {
-    return await ttTwitterDM2();
-  });
+export async function ttTwitterInit(url: string): Promise<void> {
+  switch (getXUrlEnum(url)) {
+    case XUrlEnum.HOME:
+      execObserver(document.body, async () => {
+        return await ttTwitterHome();
+      });
+      break;
+    case XUrlEnum.POST:
+      execObserver(document.body, async () => {
+        return await ttTwitterPost();
+      });
+      break;
+    case XUrlEnum.MESSAGES:
+      execObserver(document.body, async () => {
+        return await ttTwitterDM();
+      });
+      break;
+    default:
+      break;
+  }
 
   if (translateConfig.xTranslate) {
     execObserver(document.body, async () => {
@@ -47,7 +80,7 @@ export async function ttTwitterInit(): Promise<void> {
   }
 }
 
-async function ttTwitterPost(): Promise<boolean> {
+async function ttTwitterHome(): Promise<boolean> {
   const mainWrapper = document.querySelector(
     "main[role=main] div[data-testid=primaryColumn]",
   );
@@ -64,36 +97,38 @@ async function ttTwitterPost(): Promise<boolean> {
 
   // 添加翻译按钮响应事件
   if (toolBarParentWrapper.getAttribute("tt-button-is-done") === "true") {
-    return false;
+    return true;
   }
-
-  const buttonList: ButtonData[] = [
-    {
-      disabled: false,
-      tag: ButtonTag.Generate,
-      text: "✨ Generate",
-      params: { data: { mainWrapper } },
-      handler: generateHandle,
-    },
-    {
-      disabled: false,
-      tag: ButtonTag.Translate,
-      text: "🌎 Translate",
-      params: { data: { mainWrapper } },
-      handler: generateHandle,
-    },
-  ];
-
   createButtonContainer(
     toolBarParentWrapper as HTMLElement,
     ButtonLocationEnum.Previous,
-    buttonList,
   );
+
+  const { data: templates, error: template_error } = await supabaseWrapper
+    .supabase!.from("system_templates")
+    .select("*")
+    .eq("template_type", TemplateTypeEnum.POST);
+  if (template_error) {
+    throw template_error;
+  }
+  if (!templates.length) {
+    return true;
+  }
+
+  templates.forEach((item: SystemTemplate) => {
+    buttonList.value.push({
+      disabled: false,
+      template_id: item.template_id,
+      text: item.name,
+      params: { data: { mainWrapper } },
+      handler: generateHandle,
+    });
+  });
 
   return true;
 }
 
-async function ttTwitterReply(): Promise<boolean> {
+async function ttTwitterPost(): Promise<boolean> {
   const mainWrapper = document.querySelector("div[role=dialog]");
   const tweetTextareaWrapper = mainWrapper?.querySelector(
     "div[data-testid=tweetTextarea_0]",
@@ -107,96 +142,48 @@ async function ttTwitterReply(): Promise<boolean> {
   }
 
   if (toolBarParentWrapper.getAttribute("tt-button-is-done") === "true") {
-    return false;
+    return true;
   }
+  createButtonContainer(
+    toolBarParentWrapper as HTMLElement,
+    ButtonLocationEnum.Previous,
+  );
 
   const replayTweetTextWrapper = mainWrapper?.querySelector(
     "div[data-testid=tweetText",
   ) as HTMLElement;
 
-  const buttonList: ButtonData[] = [];
+  let template_type = TemplateTypeEnum.POST;
+  let replayContent = "";
   if (replayTweetTextWrapper) {
     // reply
-    const replayContent = replayTweetTextWrapper.textContent || "";
+    replayContent = replayTweetTextWrapper.textContent || "";
     if (replayContent === "") {
       return false;
     }
-    buttonList.push(
-      {
-        disabled: false,
-        tag: ButtonTag.Approval,
-        text: "👍 Approval",
-        params: { data: { mainWrapper, replayContent } },
-        handler: generateHandle,
-      },
-      {
-        disabled: false,
-        tag: ButtonTag.Disapproval,
-        text: "👎 Disapproval",
-        params: { data: { mainWrapper, replayContent } },
-        handler: generateHandle,
-      },
-      {
-        disabled: false,
-        tag: ButtonTag.Support,
-        text: "🫶 Support",
-        params: { data: { mainWrapper, replayContent } },
-        handler: generateHandle,
-      },
-      {
-        disabled: false,
-        tag: ButtonTag.Joke,
-        text: "🔥 Joke",
-        params: { data: { mainWrapper, replayContent } },
-        handler: generateHandle,
-      },
-      {
-        disabled: false,
-        tag: ButtonTag.Idea,
-        text: "💡 Idea",
-        params: { data: { mainWrapper, replayContent } },
-        handler: generateHandle,
-      },
-      {
-        disabled: false,
-        tag: ButtonTag.Question,
-        text: "❓ Question",
-        params: { data: { mainWrapper, replayContent } },
-        handler: generateHandle,
-      },
-      {
-        disabled: false,
-        tag: ButtonTag.Translate,
-        text: "🌎 Translate",
-        params: { data: { mainWrapper } },
-        handler: generateHandle,
-      },
-    );
-  } else {
-    // post
-    buttonList.push(
-      {
-        disabled: false,
-        tag: ButtonTag.Generate,
-        text: "✨ Generate",
-        params: { data: { mainWrapper } },
-        handler: generateHandle,
-      },
-      {
-        disabled: false,
-        tag: ButtonTag.Translate,
-        text: "🌎 Translate",
-        params: { data: { mainWrapper } },
-        handler: generateHandle,
-      },
-    );
+    template_type = TemplateTypeEnum.REPLY;
   }
 
-  createButtonContainer(
-    toolBarParentWrapper as HTMLElement,
-    ButtonLocationEnum.Previous,
-    buttonList,
-  );
+  const { data: templates, error: template_error } = await supabaseWrapper
+    .supabase!.from("system_templates")
+    .select("*")
+    .eq("template_type", template_type);
+  if (template_error) {
+    throw template_error;
+  }
+  if (!templates.length) {
+    return true;
+  }
+
+  templates.forEach((item: SystemTemplate) => {
+    buttonList.value.push({
+      disabled: false,
+      template_id: item.template_id,
+      text: item.name,
+      params: { data: { mainWrapper, replayContent } },
+      handler: generateHandle,
+    });
+  });
 
   return true;
 }
@@ -211,77 +198,44 @@ async function ttTwitterDM(): Promise<boolean> {
   }
 
   // 添加翻译按钮响应事件
-  if (
-    dmWrapper.getAttribute("tt-button-is-done") === "true" ||
-    dmWrapper.parentElement?.parentElement?.querySelector(
-      "div[tt-button-is-done]",
-    )
-  ) {
+  if (dmWrapper.getAttribute("tt-button-is-done") === "true") {
+    return true;
+  }
+  createButtonContainer(
+    dmWrapper as HTMLElement,
+    ButtonLocationEnum.ParentPrevious,
+  );
+
+  const { data: templates, error: template_error } = await supabaseWrapper
+    .supabase!.from("system_templates")
+    .select("*")
+    .eq("template_type", TemplateTypeEnum.TRANSLATE);
+  if (template_error) {
+    throw template_error;
+  }
+  if (!templates.length) {
     return true;
   }
 
-  const buttonList: ButtonData[] = [
-    {
+  const buttonList: ButtonData[] = [];
+  templates.forEach((item: SystemTemplate) => {
+    buttonList.push({
       disabled: false,
-      tag: ButtonTag.Translate,
-      text: "🌎 Translate",
+      template_id: item.template_id,
+      text: item.name,
       params: { data: { dmWrapper } },
       handler: dmGenerateHandle,
-    },
-  ];
-
-  createButtonContainer(
-    dmWrapper.parentElement as HTMLElement,
-    ButtonLocationEnum.Previous,
-    buttonList,
-  );
-
-  return true;
-}
-
-async function ttTwitterDM2(): Promise<boolean> {
-  const dmWrapper = document.querySelector(
-    "div[id=react-root] div[data-testid=DMDrawer] aside[role=complementary] button[data-testid=dmComposerSendButton]",
-  );
-
-  if (!dmWrapper) {
-    return false;
-  }
-
-  // 添加翻译按钮响应事件
-  if (
-    dmWrapper.getAttribute("tt-button-is-done") === "true" ||
-    dmWrapper.parentElement?.parentElement?.querySelector(
-      "div[tt-button-is-done]",
-    )
-  ) {
-    return true;
-  }
-
-  const buttonList: ButtonData[] = [
-    {
-      disabled: false,
-      tag: ButtonTag.Translate,
-      text: "🌎 Translate",
-      params: { data: { dmWrapper } },
-      handler: dmGenerateHandle,
-    },
-  ];
-
-  createButtonContainer(
-    dmWrapper.parentElement as HTMLElement,
-    ButtonLocationEnum.Previous,
-    buttonList,
-  );
+    });
+  });
 
   return true;
 }
 
 async function generateHandle(
-  tag: ButtonTag,
+  template_id: string,
   params: HandlerParams,
 ): Promise<void> {
-  console.log("generateHandle", tag, params);
+  console.log("generateHandle", template_id, params);
   const { mainWrapper, replayContent } = params.data;
   if (!mainWrapper) {
     return;
@@ -295,43 +249,43 @@ async function generateHandle(
     return;
   }
 
-  let needDialog = false;
-  if ([ButtonTag.Generate, ButtonTag.Translate].includes(tag)) {
-    needDialog = true;
-  }
-
   let sourceContent = replayContent || tweetTextareaWrapper.textContent || "";
   if (sourceContent === "") {
     return;
   }
-  const generateText = await generateContent(
-    sourceContent,
-    tag,
-    MessageType.AIGenerate,
-  );
 
-  if (needDialog) {
-    createDialogContainer(
-      generateText,
-      () => {
-        // 确认按钮的回调
-        setInputText(tweetTextareaWrapper, generateText);
-      },
-      () => {
-        // 取消按钮的回调
-        console.log("Operation cancelled.");
-      },
-    );
-  } else {
-    setInputText(tweetTextareaWrapper, generateText);
+  const message: AIGenarateMessage = {
+    type: MessageTypeEnum.AI_GENARATE,
+    data: {
+      content: sourceContent,
+      operation: template_id,
+    },
+  };
+  const response = await sendMessage(message);
+  if (!response.is_ok) {
+    logger.error("AI generate failed", response.error);
+    return;
   }
+
+  const generateText = response.data;
+  createDialogContainer(
+    generateText,
+    () => {
+      // 确认按钮的回调
+      setInputText(tweetTextareaWrapper, generateText);
+    },
+    () => {
+      // 取消按钮的回调
+      console.log("Operation cancelled.");
+    },
+  );
 }
 
 async function dmGenerateHandle(
-  tag: ButtonTag,
+  template_id: string,
   params: HandlerParams,
 ): Promise<void> {
-  console.log("dmGenerateHandle", tag, params);
+  console.log("dmGenerateHandle", template_id, params);
   const { dmWrapper } = params.data;
   if (!dmWrapper) {
     return;
@@ -348,12 +302,20 @@ async function dmGenerateHandle(
   if (sourceContent === "") {
     return;
   }
-  const generateText = await generateContent(
-    sourceContent,
-    tag,
-    MessageType.AIGenerate,
-  );
+  const message: AIGenarateMessage = {
+    type: MessageTypeEnum.AI_GENARATE,
+    data: {
+      content: sourceContent,
+      operation: template_id,
+    },
+  };
+  const response = await sendMessage(message);
+  if (!response.is_ok) {
+    logger.error("AI generate failed", response.error);
+    return;
+  }
 
+  const generateText = response.data;
   createDialogContainer(
     generateText,
     () => {

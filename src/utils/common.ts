@@ -7,7 +7,7 @@ export function retry(
   maxLimit = 5,
   intervalStep = 0,
 ): Promise<any> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const attempt = () => {
       fn().then(resolve).catch((error) => {
         if (maxLimit <= 0) {
@@ -61,7 +61,7 @@ export function debounce(
   fn: (this: void, ...args: any[]) => void,
   wait = 1,
 ): (...args: any[]) => void {
-  let timeout: number | undefined;
+  let timeout: NodeJS.Timeout | undefined;
   return function (this: void, ...args: any[]) {
     clearTimeout(timeout);
     timeout = setTimeout(() => fn.call(this, ...args), wait);
@@ -91,37 +91,4 @@ export function isContent(text: string): boolean {
     return false;
   }
   return true; // 如果不匹配，则需要翻译
-}
-
-// 定义消息的类型
-export interface MessageData {
-  type: MessageType;
-  payload: {
-    data: any;
-  };
-}
-
-// 定义响应的类型
-export interface ResponseData {
-  type: string;
-  payload: {
-    data: any;
-  };
-}
-
-export enum MessageType {
-  Translate = "translate",
-  ConfigUpdate = "config-update",
-  AIGenerate = "ai-genarate",
-}
-
-export enum ButtonTag {
-  Translate = "translate",
-  Generate = "generate",
-  Approval = "approval",
-  Disapproval = "disapproval",
-  Support = "support",
-  Joke = "joke",
-  Idea = "idea",
-  Question = "question",
 }

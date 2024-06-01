@@ -1,3 +1,5 @@
+import logger from "../common/logging";
+
 // 配置对象
 const openConfig = {
   openaiApiKey: "",
@@ -23,8 +25,8 @@ export async function initOpenAI() {
     if (openaiOrganization) openConfig.openaiOrganization = openaiOrganization;
     if (openaiChatModel) openConfig.openaiChatModel = openaiChatModel;
 
-    console.log("OpenAI configuration initialized:", openConfig);
+    logger.log("OpenAI configuration initialized:", openConfig);
   } catch (error) {
-    console.error("Error initializing OpenAI:", error);
+    logger.error("Error initializing OpenAI:", error);
   }
 }

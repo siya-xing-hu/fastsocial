@@ -1,30 +1,27 @@
+import logger, { log } from "../common/logging";
+import { MessageTypeEnum, XUrlMessage } from "../common/runtime-message";
+
 export async function addTabListener() {
   // 监听标签页更新事件
   chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    logger.log("tabs.onUpdated", tabId, changeInfo, tab);
+
     if (changeInfo.status === "complete") {
       sendMessageToContentScript(tabId, tab.url);
     }
   });
 
   // 监听标签页激活事件
-  chrome.tabs.onActivated.addListener(({ tabId }) => {
+  chrome.tabs.onActivated.addListener((activeInfo) => {
+    logger.log("tabs.onActivated", activeInfo);
+
+    const tabId = activeInfo.tabId;
     chrome.tabs.get(tabId, (tab) => {
+      logger.log("tabs.get", tab);
       // 检测标签页加载完毕
       if (tab && tab.status === "complete") {
         sendMessageToContentScript(tabId, tab.url);
       }
-    });
-  });
-
-  chrome.runtime.onInstalled.addListener(() => {
-    chrome.tabs.query({ url: "*://*.twitter.com/*" }, (tabs) => {
-      tabs.forEach((tab) => {
-        if (typeof tab.id === "number") {
-          chrome.tabs.sendMessage(tab.id, {
-            type: "twitter-url",
-          });
-        }
-      });
     });
   });
 }
@@ -35,7 +32,13 @@ function sendMessageToContentScript(tabId: number, url: string | undefined) {
     return;
   }
   if (isTwitterUrl(url)) {
-    chrome.tabs.sendMessage(tabId, { type: "twitter-url" });
+    const message: XUrlMessage = {
+      type: MessageTypeEnum.X_URl,
+      data: {
+        url: url,
+      },
+    };
+    chrome.tabs.sendMessage(tabId, message);
   }
 }
 

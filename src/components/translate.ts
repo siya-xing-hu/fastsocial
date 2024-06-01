@@ -1,11 +1,12 @@
-import {
-  isContent,
-  MessageData,
-  MessageType,
-  randomString,
-} from "../utils/common";
+import { isContent, randomString } from "../utils/common";
 import { createApp } from "vue";
 import Translate from "./Translate.vue";
+import {
+  MessageTypeEnum,
+  sendMessage,
+  TranslateMessage,
+} from "../common/runtime-message";
+import logger from "../common/logging";
 
 interface TranslateData {
   id?: string;
@@ -16,23 +17,19 @@ interface TranslateData {
 const translateDataList: TranslateData[] = [];
 
 export async function translateContent(text: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const messageData: MessageData = {
-      type: MessageType.Translate,
-      payload: {
-        data: {
-          text,
-          locale: "auto",
-        },
-      },
-    };
+  const message: TranslateMessage = {
+    type: MessageTypeEnum.TRANSLATE,
+    data: {
+      content: text,
+    },
+  };
 
-    chrome.runtime?.id &&
-      chrome.runtime.sendMessage(messageData, (resp: MessageData) => {
-        const result = resp?.payload?.data;
-        resolve(result);
-      });
-  });
+  const response = await sendMessage(message);
+  if (!response.is_ok) {
+    logger.error("AI generate failed", response.error);
+    return "";
+  }
+  return response.data;
 }
 
 export async function execTranslate(

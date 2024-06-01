@@ -1,84 +1,79 @@
-import { initOpenAI } from "../config/openai-config";
-import { MessageData, MessageType, ResponseData, retry } from "../utils/common";
+import logger from "../common/logging";
+import {
+  AIGenarateData,
+  ConfigUpdateMessage,
+  Message,
+  MessageResponse,
+  MessageTypeEnum,
+} from "../common/runtime-message";
+import openConfig, { initOpenAI } from "../config/openai-config";
+import { retry } from "../utils/common";
 import { translate } from "../utils/translate";
 import { execGptPrompt } from "./ai-generate";
 import { addTabListener } from "./listener";
 
-export async function init(): Promise<void> {
-  await initOpenAI();
+export function init() {
+  const now = new Date();
+  logger.log("### init ###", now.toISOString());
 
   chrome.runtime.onMessage.addListener(
     (
-      message: MessageData,
+      message: Message,
       sender,
-      sendResponse: (response?: ResponseData) => void,
-    ): boolean => {
-      console.log("message", message);
+      sendResponse: (response?: MessageResponse) => void,
+    ) => {
+      console.log("message", message, sender);
 
       switch (message.type) {
-        case MessageType.Translate:
-          const { text, locale = "auto" } = message?.payload?.data || {};
+        case MessageTypeEnum.TRANSLATE:
+          const text = message.data.content;
           retry(
             async () => {
-              return Promise.resolve(
-                await translate(text, locale),
-              );
+              return Promise.resolve(await translate(text, "auto"));
             },
             1,
             5,
           ).then((resp) => {
-            sendResponse({ type: "translate-result", payload: { data: resp } });
+            sendResponse({ is_ok: true, data: resp });
           }).catch((error) => {
-            sendResponse({
-              type: "translate-error",
-              payload: { data: "error: " + error.toString() },
-            });
+            sendResponse({ is_ok: false, error: error.toString() });
           });
           break;
-        case MessageType.ConfigUpdate:
+        case MessageTypeEnum.CONFIG_UPDATE:
+          const sendMessage: ConfigUpdateMessage = {
+            type: MessageTypeEnum.CONFIG_UPDATE,
+          };
           initOpenAI().then(() => {
             chrome.tabs.query({ url: "*://*.twitter.com/*" }, (tabs) => {
               tabs.forEach((tab) => {
                 if (typeof tab.id === "number") { // 确保 tab.id 是一个数字
-                  chrome.tabs.sendMessage(tab.id, {
-                    type: "config-update",
-                  });
+                  chrome.tabs.sendMessage(tab.id, sendMessage);
                 }
               });
             });
             chrome.tabs.query({ url: "*://*.x.com/*" }, (tabs) => {
               tabs.forEach((tab) => {
                 if (typeof tab.id === "number") { // 确保 tab.id 是一个数字
-                  chrome.tabs.sendMessage(tab.id, {
-                    type: "config-update",
-                  });
+                  chrome.tabs.sendMessage(tab.id, sendMessage);
                 }
               });
             });
           });
           break;
-        case MessageType.AIGenerate:
-          const { tag, content } = message?.payload?.data || {};
+        case MessageTypeEnum.AI_GENARATE:
+          const data: AIGenarateData = message.data;
           retry(
             async () => {
-              return Promise.resolve(await execGptPrompt(tag, content));
+              return Promise.resolve(
+                await execGptPrompt(data.operation, data.content),
+              );
             },
             1,
             5,
           ).then((resp) => {
-            sendResponse({
-              type: "ai-genarate-result",
-              payload: {
-                data: resp,
-              },
-            });
+            sendResponse({ is_ok: true, data: resp });
           }).catch((error) => {
-            sendResponse({
-              type: "ai-genarate-error",
-              payload: {
-                data: "发生错误，错误信息为" + error.toString(),
-              },
-            });
+            sendResponse({ is_ok: false, error: error.toString() });
           });
           break;
       }
@@ -86,5 +81,13 @@ export async function init(): Promise<void> {
     },
   );
 
+  // Do load the appState and other things
+  onLoad().catch(logger.error);
+}
+
+async function onLoad() {
+  await initOpenAI();
+
+  // 添加标签页监听器
   await addTabListener();
 }
