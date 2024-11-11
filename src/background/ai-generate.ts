@@ -1,7 +1,8 @@
+import { ButtonTagEnum } from "../components/button";
 import { openaiCreate } from "../utils/openai";
 
 export async function execGptPrompt(
-  operation: string,
+  operation: ButtonTagEnum,
   content: string,
 ): Promise<string> {
   let messageData = [
@@ -12,11 +13,12 @@ export async function execGptPrompt(
     },
     {
       "role": "user",
-      "content": `Replies to tweet: '${content}', Reply style: '${operation}'`,
+      "content": `Replies to tweet: '${content}', Reply style: '${operation.toLocaleLowerCase()}'`,
     },
   ];
 
-  const res = await openaiCreate(messageData);
+  // const res = await openaiCreate(messageData);
+  const res = await openaiCreate("帮我将引号里的内容翻译成英文：\"" + content + "\", JSON 格式输出，输出格式： {\"result\": \"\"}");
   const result_json = JSON.parse(res);
-  return Promise.resolve(result_json.choices[0].message.content);
+  return Promise.resolve(result_json.result);
 }

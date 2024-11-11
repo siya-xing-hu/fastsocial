@@ -1,14 +1,14 @@
 // read version number from package.json
 import { version } from "./package.json";
 import { defineManifest } from "@crxjs/vite-plugin";
+import googleTranslatorAPI from "./src/config/translate-config";
 
-const isDevHostsEnabled = false;
+const isDevHostsEnabled = true;
 
 const prodHostPermissions = [
-  "https://app.xers.ai/*",
   "https://twitter.com/*",
   "https://x.com/*",
-  "https://cewakvggtxhcfjmscovo.supabase.co/*",
+  googleTranslatorAPI
 ];
 
 const devHostPermissions = [
@@ -20,28 +20,6 @@ const devHostPermissions = [
 const hostPermissions = isDevHostsEnabled
   ? devHostPermissions.concat(prodHostPermissions)
   : prodHostPermissions;
-
-const devCallbackMatches = [
-  "http://localhost:9000/xersai-callback*",
-];
-const prodAuthCallbackMatches = [
-  "https://app.xers.ai/xersai-callback*",
-];
-
-const authCallbackMatches = isDevHostsEnabled
-  ? devCallbackMatches.concat(prodAuthCallbackMatches)
-  : prodAuthCallbackMatches;
-
-const devPaymentCallbackMatches = [
-  "http://localhost:9000/xersai-payment-callback*",
-];
-const prodPaymentCallbackMatches = [
-  "https://app.xers.ai/xersai-payment-callback*",
-];
-
-const paymentCallbackMatches = isDevHostsEnabled
-  ? devPaymentCallbackMatches.concat(prodPaymentCallbackMatches)
-  : prodPaymentCallbackMatches;
 
 export default defineManifest(async () => {
   return {
@@ -67,29 +45,17 @@ export default defineManifest(async () => {
     permissions: [
       "activeTab",
       "storage",
-      "notifications",
-      "scripting",
-      "alarms",
-      "cookies",
+      "webRequest",
       "tabs",
+      "scripting"
     ],
     content_scripts: [
       {
         js: ["src/content-script.ts"],
-        matches: ["https://x.com/*", "https://twitter.com/*"],
-        exclude_matches: [
-          "https://x.com/i/oauth2/*",
-          "https://twitter.com/i/oauth2/*",
+        "matches": [
+          "<all_urls>"
         ],
-        run_at: "document_end",
-      },
-      {
-        js: ["src/auth-callback.ts"],
-        matches: authCallbackMatches,
-      },
-      {
-        js: ["src/payment-callback.ts"],
-        matches: paymentCallbackMatches,
+        run_at: "document_end"
       },
     ],
   };

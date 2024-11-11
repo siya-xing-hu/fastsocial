@@ -1,12 +1,12 @@
 import logger from "../common/logging";
 import {
   AIGenarateData,
-  ConfigUpdateMessage,
-  Message,
-  MessageResponse,
-  MessageTypeEnum,
+  RuntimeMessage,
+  RuntimeMessageResponse,
+  RuntimeMessageTypeEnum,
 } from "../common/runtime-message";
-import openConfig, { initOpenAI } from "../config/openai-config";
+import { ConfigUpdateTabMessage, TabMessageTypeEnum } from "../common/tabs-message";
+import { initOpenAI } from "../config/openai-config";
 import { retry } from "../utils/common";
 import { translate } from "../utils/translate";
 import { execGptPrompt } from "./ai-generate";
@@ -18,14 +18,14 @@ export function init() {
 
   chrome.runtime.onMessage.addListener(
     (
-      message: Message,
+      message: RuntimeMessage,
       sender,
-      sendResponse: (response?: MessageResponse) => void,
+      sendResponse: (response?: RuntimeMessageResponse) => void,
     ) => {
       console.log("message", message.type);
 
       switch (message.type) {
-        case MessageTypeEnum.TRANSLATE:
+        case RuntimeMessageTypeEnum.TRANSLATE:
           const text = message.data.content;
           retry(
             async () => {
@@ -39,9 +39,9 @@ export function init() {
             sendResponse({ is_ok: false, error: error.toString() });
           });
           break;
-        case MessageTypeEnum.CONFIG_UPDATE:
-          const sendMessage: ConfigUpdateMessage = {
-            type: MessageTypeEnum.CONFIG_UPDATE,
+        case RuntimeMessageTypeEnum.CONFIG_UPDATE:
+          const sendMessage: ConfigUpdateTabMessage = {
+            type: TabMessageTypeEnum.CONFIG_UPDATE,
           };
           initOpenAI().then(() => {
             chrome.tabs.query({ url: "*://*.twitter.com/*" }, (tabs) => {
@@ -60,7 +60,7 @@ export function init() {
             });
           });
           break;
-        case MessageTypeEnum.AI_GENARATE:
+        case RuntimeMessageTypeEnum.AI_GENARATE:
           const data: AIGenarateData = message.data;
           retry(
             async () => {

@@ -1,4 +1,4 @@
 const googleTranslatorAPI =
-  "https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&";
+  "https://translate.googleapis.com/translate_a/single";
 
 export default googleTranslatorAPI;

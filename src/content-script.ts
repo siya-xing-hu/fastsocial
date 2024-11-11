@@ -6,14 +6,15 @@ import logger from "./common/logging";
 import "./popup.css";
 import { execNotionTranslate, execTranslate } from "./components/translate";
 import { translateConfig, ttTwitterInit } from "./components/_twitter";
-import { Message, MessageTypeEnum } from "./common/runtime-message";
+import { TabMessage, TabMessageTypeEnum } from "./common/tabs-message";
+import { ttProductHuntInit } from "./components/_producthunt";
 
 async function init() {
   const now = new Date();
   logger.log("### init ###", now.toISOString());
 
   chrome.runtime.onMessage.addListener(function (
-    message: Message,
+    message: TabMessage,
     sender,
     sendResponse,
   ) {
@@ -25,19 +26,26 @@ async function init() {
     );
 
     switch (message.type) {
-      case MessageTypeEnum.CONFIG_UPDATE:
-        chrome.storage.local.get().then(({ xTranslate }) => {
-          translateConfig.xTranslate = xTranslate == "TRUE";
+      case TabMessageTypeEnum.CONFIG_UPDATE:
+        chrome.storage.local.get().then(({ alwaysTranslate }) => {
+          if (alwaysTranslate !== undefined) {
+            translateConfig.xTranslate = alwaysTranslate;
+          }
         });
         break;
-      case MessageTypeEnum.X_URl:
+      case TabMessageTypeEnum.X_URl:
         ttTwitterInit(message.data.url);
+        break;
+      case TabMessageTypeEnum.PH_URl:
+        ttProductHuntInit(message.data.url);
         break;
     }
   });
 
-  chrome.storage.local.get().then(({ xTranslate }) => {
-    translateConfig.xTranslate = xTranslate == "TRUE";
+  chrome.storage.local.get().then(({ alwaysTranslate }) => {
+    if (alwaysTranslate !== undefined) {
+      translateConfig.xTranslate = alwaysTranslate;
+    }
   });
 
   let currentClientX = 0;
@@ -84,4 +92,7 @@ async function init() {
   });
 }
 
-init().catch(logger.error);
+console.log("11111")
+init().then(() => {
+  console.log("22222")
+})

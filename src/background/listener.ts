@@ -1,5 +1,5 @@
-import logger, { log } from "../common/logging";
-import { MessageTypeEnum, XUrlMessage } from "../common/runtime-message";
+import logger from "../common/logging";
+import { TabMessageTypeEnum, XUrlTabMessage } from "../common/tabs-message";
 
 export async function addTabListener() {
   // 监听标签页更新事件
@@ -32,8 +32,8 @@ function sendMessageToContentScript(tabId: number, url: string | undefined) {
     return;
   }
   if (isTwitterUrl(url)) {
-    const message: XUrlMessage = {
-      type: MessageTypeEnum.X_URl,
+    const message: XUrlTabMessage = {
+      type: TabMessageTypeEnum.X_URl,
       data: {
         url: url,
       },

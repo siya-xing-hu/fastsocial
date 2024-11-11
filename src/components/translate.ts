@@ -2,9 +2,9 @@ import { isContent, randomString } from "../utils/common";
 import { createApp } from "vue";
 import Translate from "./Translate.vue";
 import {
-  MessageTypeEnum,
-  sendMessage,
-  TranslateMessage,
+  RuntimeMessageTypeEnum,
+  sendRuntimeMessage,
+  TranslateRuntimeMessage,
 } from "../common/runtime-message";
 import logger from "../common/logging";
 
@@ -17,14 +17,14 @@ interface TranslateData {
 const translateDataList: TranslateData[] = [];
 
 export async function translateContent(text: string): Promise<string> {
-  const message: TranslateMessage = {
-    type: MessageTypeEnum.TRANSLATE,
+  const message: TranslateRuntimeMessage = {
+    type: RuntimeMessageTypeEnum.TRANSLATE,
     data: {
       content: text,
     },
   };
 
-  const response = await sendMessage(message);
+  const response = await sendRuntimeMessage(message);
   if (!response.is_ok) {
     logger.error("AI generate failed", response.error);
     return "";

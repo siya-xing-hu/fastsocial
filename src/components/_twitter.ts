@@ -1,21 +1,18 @@
 import { isContent, setInputText } from "../utils/common";
 import {
-  ButtonData,
   buttonList,
   ButtonLocationEnum,
+  ButtonTagEnum,
   createButtonContainer,
   HandlerParams,
 } from "./button";
 import { createDialogContainer } from "./dialog";
 import { execObserver } from "./util/mutationObserver";
 import { translateContent } from "./translate";
-import { supabaseWrapper } from "../config/supabase-client";
-import { SystemTemplate } from "../common/entities";
-import { TemplateTypeEnum } from "../common/enums";
 import {
-  AIGenarateMessage,
-  MessageTypeEnum,
-  sendMessage,
+  AIGenarateRuntimeMessage,
+  RuntimeMessageTypeEnum,
+  sendRuntimeMessage,
 } from "../common/runtime-message";
 import logger from "../common/logging";
 
@@ -69,6 +66,7 @@ export async function ttTwitterInit(url: string): Promise<void> {
       break;
   }
 
+  logger.log("translateConfig.xTranslate: ", translateConfig.xTranslate)
   if (translateConfig.xTranslate) {
     execObserver(document.body, async () => {
       if (translateConfig.xTranslate) {
@@ -95,7 +93,6 @@ async function ttTwitterHome(): Promise<boolean> {
     return false;
   }
 
-  // 添加翻译按钮响应事件
   if (toolBarParentWrapper.getAttribute("tt-button-is-done") === "true") {
     return true;
   }
@@ -104,27 +101,22 @@ async function ttTwitterHome(): Promise<boolean> {
     ButtonLocationEnum.Previous,
   );
 
-  const { data: templates, error: template_error } = await supabaseWrapper
-    .supabase!.from("system_templates")
-    .select("*")
-    .eq("template_type", TemplateTypeEnum.POST);
-  if (template_error) {
-    throw template_error;
-  }
-  if (!templates.length) {
-    return true;
-  }
-
-  templates.forEach((item: SystemTemplate) => {
-    buttonList.value.push({
+  buttonList.value.push(
+    {
       disabled: false,
-      template_id: item.template_id,
-      text: item.name,
+      tag: ButtonTagEnum.GENERATE,
+      text: "✨ Generate",
       params: { data: { mainWrapper } },
       handler: generateHandle,
-    });
-  });
-
+    },
+    {
+      disabled: false,
+      tag: ButtonTagEnum.TRANSLATE,
+      text: "🌎 Translate",
+      params: { data: { mainWrapper } },
+      handler: generateHandle,
+    },
+  );
   return true;
 }
 
@@ -153,37 +145,81 @@ async function ttTwitterPost(): Promise<boolean> {
     "div[data-testid=tweetText",
   ) as HTMLElement;
 
-  let template_type = TemplateTypeEnum.POST;
-  let replayContent = "";
   if (replayTweetTextWrapper) {
     // reply
-    replayContent = replayTweetTextWrapper.textContent || "";
+    const replayContent = replayTweetTextWrapper.textContent || "";
     if (replayContent === "") {
       return false;
     }
-    template_type = TemplateTypeEnum.REPLY;
+    buttonList.value.push(
+      {
+        disabled: false,
+        tag: ButtonTagEnum.APPROVAL,
+        text: "👍 Approval",
+        params: { data: { mainWrapper, replayContent } },
+        handler: generateHandle,
+      },
+      {
+        disabled: false,
+        tag: ButtonTagEnum.DISAPPROVAL,
+        text: "👎 Disapproval",
+        params: { data: { mainWrapper, replayContent } },
+        handler: generateHandle,
+      },
+      {
+        disabled: false,
+        tag: ButtonTagEnum.SUPPORT,
+        text: "🫶 Support",
+        params: { data: { mainWrapper, replayContent } },
+        handler: generateHandle,
+      },
+      {
+        disabled: false,
+        tag: ButtonTagEnum.JOKE,
+        text: "🔥 Joke",
+        params: { data: { mainWrapper, replayContent } },
+        handler: generateHandle,
+      },
+      {
+        disabled: false,
+        tag: ButtonTagEnum.IDEA,
+        text: "💡 Idea",
+        params: { data: { mainWrapper, replayContent } },
+        handler: generateHandle,
+      },
+      {
+        disabled: false,
+        tag: ButtonTagEnum.QUESTION,
+        text: "❓ Question",
+        params: { data: { mainWrapper, replayContent } },
+        handler: generateHandle,
+      },
+      {
+        disabled: false,
+        tag: ButtonTagEnum.TRANSLATE,
+        text: "🌎 Translate",
+        params: { data: { mainWrapper } },
+        handler: generateHandle,
+      },
+    );
+  } else {
+    buttonList.value.push(
+      {
+        disabled: false,
+        tag: ButtonTagEnum.GENERATE,
+        text: "✨ Generate",
+        params: { data: { mainWrapper } },
+        handler: generateHandle,
+      },
+      {
+        disabled: false,
+        tag: ButtonTagEnum.TRANSLATE,
+        text: "🌎 Translate",
+        params: { data: { mainWrapper } },
+        handler: generateHandle,
+      },
+    );
   }
-
-  const { data: templates, error: template_error } = await supabaseWrapper
-    .supabase!.from("system_templates")
-    .select("*")
-    .eq("template_type", template_type);
-  if (template_error) {
-    throw template_error;
-  }
-  if (!templates.length) {
-    return true;
-  }
-
-  templates.forEach((item: SystemTemplate) => {
-    buttonList.value.push({
-      disabled: false,
-      template_id: item.template_id,
-      text: item.name,
-      params: { data: { mainWrapper, replayContent } },
-      handler: generateHandle,
-    });
-  });
 
   return true;
 }
@@ -206,36 +242,24 @@ async function ttTwitterDM(): Promise<boolean> {
     ButtonLocationEnum.ParentPrevious,
   );
 
-  const { data: templates, error: template_error } = await supabaseWrapper
-    .supabase!.from("system_templates")
-    .select("*")
-    .eq("template_type", TemplateTypeEnum.TRANSLATE);
-  if (template_error) {
-    throw template_error;
-  }
-  if (!templates.length) {
-    return true;
-  }
-
-  const buttonList: ButtonData[] = [];
-  templates.forEach((item: SystemTemplate) => {
-    buttonList.push({
+  buttonList.value.push(
+    {
       disabled: false,
-      template_id: item.template_id,
-      text: item.name,
+      tag: ButtonTagEnum.TRANSLATE,
+      text: "🌎 Translate",
       params: { data: { dmWrapper } },
       handler: dmGenerateHandle,
-    });
-  });
+    },
+  );
 
   return true;
 }
 
 async function generateHandle(
-  template_id: string,
+  tag: ButtonTagEnum,
   params: HandlerParams,
 ): Promise<void> {
-  console.log("generateHandle", template_id, params);
+  console.log("generateHandle", tag, params);
   const { mainWrapper, replayContent } = params.data;
   if (!mainWrapper) {
     return;
@@ -254,14 +278,14 @@ async function generateHandle(
     return;
   }
 
-  const message: AIGenarateMessage = {
-    type: MessageTypeEnum.AI_GENARATE,
+  const message: AIGenarateRuntimeMessage = {
+    type: RuntimeMessageTypeEnum.AI_GENARATE,
     data: {
       content: sourceContent,
-      operation: template_id,
+      operation: tag,
     },
   };
-  const response = await sendMessage(message);
+  const response = await sendRuntimeMessage(message);
   if (!response.is_ok) {
     logger.error("AI generate failed", response.error);
     return;
@@ -282,10 +306,10 @@ async function generateHandle(
 }
 
 async function dmGenerateHandle(
-  template_id: string,
+  tag: ButtonTagEnum,
   params: HandlerParams,
 ): Promise<void> {
-  console.log("dmGenerateHandle", template_id, params);
+  console.log("dmGenerateHandle", tag, params);
   const { dmWrapper } = params.data;
   if (!dmWrapper) {
     return;
@@ -302,14 +326,14 @@ async function dmGenerateHandle(
   if (sourceContent === "") {
     return;
   }
-  const message: AIGenarateMessage = {
-    type: MessageTypeEnum.AI_GENARATE,
+  const message: AIGenarateRuntimeMessage = {
+    type: RuntimeMessageTypeEnum.AI_GENARATE,
     data: {
       content: sourceContent,
-      operation: template_id,
+      operation: tag,
     },
   };
-  const response = await sendMessage(message);
+  const response = await sendRuntimeMessage(message);
   if (!response.is_ok) {
     logger.error("AI generate failed", response.error);
     return;

@@ -5,12 +5,23 @@ export interface HandlerParams {
   data: any;
 }
 
+export enum ButtonTagEnum {
+  TRANSLATE = "translate",
+  GENERATE = "generate",
+  APPROVAL = "approval",
+  DISAPPROVAL = "disapproval",
+  SUPPORT = "support",
+  JOKE = "joke",
+  IDEA = "idea",
+  QUESTION = "question",
+}
+
 export interface ButtonData {
   disabled: boolean;
-  template_id: string;
+  tag: ButtonTagEnum;
   text: string;
   params: HandlerParams;
-  handler: (template_id: string, params: HandlerParams) => void | Promise<void>;
+  handler: (tag: ButtonTagEnum, params: HandlerParams) => void | Promise<void>;
 }
 
 export enum ButtonLocationEnum {

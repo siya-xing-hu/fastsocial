@@ -2,51 +2,61 @@ import openConfig from "../config/openai-config";
 
 // export async function openaiCreate(
 //   messageData: any,
-//   jsonFormate: boolean = true,
+//   jsonFormat: boolean = true,
 // ): Promise<any> {
-//   if (!gptClient) {
-//     return "openai config error!";
+//   if (!openConfig.apiKey || !openConfig.model) {
+//     throw new Error("OpenAI config error!");
 //   }
 
-//   const response = await gptClient.chat.completions.create({
-//     model: openConfig.openaiChatModel,
+//   const reqBody = {
+//     model: openConfig.model,
 //     messages: messageData,
-//     response_format: jsonFormate ? { type: "json_object" } : {},
+//     response_format: jsonFormat ? { type: "json_object" } : {},
+//   };
+
+//   const headers: HeadersInit = {
+//     "Authorization": `Bearer ${openConfig.apiKey}`,
+//     "Content-Type": "application/json",
+//   };
+
+//   if (openConfig.org) {
+//     headers["Openai-Organization"] = openConfig.org;
+//   }
+
+//   const response = await fetch("https://api.openai.com/v1/chat/completions", {
+//     method: "POST",
+//     headers: headers,
+//     body: JSON.stringify(reqBody),
 //   });
 
-//   return response.choices[0].message.content;
+//   const jsonData = await response.json();
+//   console.log(`openai result: ${JSON.stringify(jsonData)}`);
+//   return jsonData.choices[0].message.content;
 // }
 
 export async function openaiCreate(
-  messageData: any,
+  messageData: string,
   jsonFormat: boolean = true,
 ): Promise<any> {
-  if (!openConfig.apiKey || !openConfig.model) {
-    throw new Error("OpenAI config error!");
-  }
+  // if (!openConfig.apiKey || !openConfig.model) {
+  //   throw new Error("OpenAI config error!");
+  // }
 
   const reqBody = {
-    model: openConfig.model,
-    messages: messageData,
-    response_format: jsonFormat ? { type: "json_object" } : {},
+    model: "llama3",
+    prompt: messageData,
+    format: jsonFormat ? "json": "",
+    stream: false
   };
 
-  const headers: HeadersInit = {
-    "Authorization": `Bearer ${openConfig.apiKey}`,
-    "Content-Type": "application/json",
-  };
+  console.log(`openai request: ${JSON.stringify(reqBody)}`);
 
-  if (openConfig.org) {
-    headers["Openai-Organization"] = openConfig.org;
-  }
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch("http://localhost:11434/api/generate", {
     method: "POST",
-    headers: headers,
     body: JSON.stringify(reqBody),
   });
 
   const jsonData = await response.json();
-  console.log(`openai result: ${JSON.stringify(jsonData)}`);
-  return jsonData.choices[0].message.content;
+  console.log(`openai response: ${JSON.stringify(jsonData)}`);
+  return jsonData.response;
 }

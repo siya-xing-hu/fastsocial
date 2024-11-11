@@ -1,17 +1,15 @@
 import {
-  ConfigUpdateMessage,
-  MessageTypeEnum,
-  sendMessage,
+  ConfigUpdateRuntimeMessage,
+  RuntimeMessageTypeEnum,
+  sendRuntimeMessage,
 } from "./common/runtime-message";
 import { debounce } from "./utils/common";
 
 export const onInput = debounce(async (fieldName: string, value: string) => {
   await chrome.storage.local.set({ [fieldName]: value });
 
-  if (chrome.runtime?.id) {
-    const message: ConfigUpdateMessage = {
-      type: MessageTypeEnum.CONFIG_UPDATE,
-    };
-    await sendMessage(message);
-  }
+  const message: ConfigUpdateRuntimeMessage = {
+    type: RuntimeMessageTypeEnum.CONFIG_UPDATE,
+  };
+  await sendRuntimeMessage(message);
 }, 400);

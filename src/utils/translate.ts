@@ -5,7 +5,7 @@ export async function translate(
   text: string,
   locale: string,
 ): Promise<any> {
-  let url = googleTranslatorAPI +
+  let url = googleTranslatorAPI + "?client=gtx&dt=t&" +
     stringifyQueryParameter({
       q: text,
       tl: "zh_CN",
