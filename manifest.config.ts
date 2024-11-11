@@ -33,14 +33,6 @@ export default defineManifest(async () => {
       "48": "src/assets/main_logo_enable.png",
       "128": "src/assets/main_logo_enable.png",
     },
-    background: {
-      service_worker: "src/service-worker.ts",
-      type: "module",
-    },
-    action: {
-      // default_title: "Click to show Fast Social Config",
-      default_popup: "src/popup.html",
-    },
     host_permissions: hostPermissions,
     permissions: [
       "activeTab",
@@ -49,6 +41,11 @@ export default defineManifest(async () => {
       "tabs",
       "scripting"
     ],
+    action: {
+      // default_title: "Click to show Fast Social Config",
+      default_popup: "src/popup.html",
+    },
+    options_page: "src/option.html",
     content_scripts: [
       {
         js: ["src/content-script.ts"],
@@ -58,5 +55,9 @@ export default defineManifest(async () => {
         run_at: "document_end"
       },
     ],
+    background: {
+      service_worker: "src/service-worker.ts",
+      type: "module",
+    },
   };
 });

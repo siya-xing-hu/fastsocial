@@ -3,7 +3,7 @@
  */
 
 import logger from "./common/logging";
-import "./popup.css";
+import "./tailwind.css";
 import { execNotionTranslate, execTranslate } from "./components/translate";
 import { translateConfig, ttTwitterInit } from "./components/_twitter";
 import { TabMessage, TabMessageTypeEnum } from "./common/tabs-message";
