@@ -50,6 +50,6 @@ export async function sendTabMessage(tabId: number, message: TabMessage) {
     log("received tabMessage response:", response);
     return response;
   } catch (e) {
-    warn("error2222: ", e)
+    warn(e)
   } 
 }
