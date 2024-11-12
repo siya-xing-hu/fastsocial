@@ -1,15 +1,15 @@
-import logger from "../common/logging";
+import logger, { log } from "../common/logging";
 import {
   AIGenarateData,
   RuntimeMessage,
   RuntimeMessageResponse,
   RuntimeMessageTypeEnum,
 } from "../common/runtime-message";
-import { ConfigUpdateTabMessage, TabMessageTypeEnum } from "../common/tabs-message";
-import { initOpenAI } from "../config/openai-config";
+import { ConfigUpdateTabMessage, sendTabMessage, TabMessageTypeEnum } from "../common/tabs-message";
+import { initConfig } from "../config/storage-config";
 import { retry } from "../utils/common";
+import { execGptPrompt } from "../utils/openai";
 import { translate } from "../utils/translate";
-import { execGptPrompt } from "./ai-generate";
 import { addTabListener } from "./listener";
 
 export function init() {
@@ -22,7 +22,7 @@ export function init() {
       sender,
       sendResponse: (response?: RuntimeMessageResponse) => void,
     ) => {
-      console.log("message", message.type);
+      log("message", message.type);
 
       switch (message.type) {
         case RuntimeMessageTypeEnum.TRANSLATE:
@@ -43,18 +43,18 @@ export function init() {
           const sendMessage: ConfigUpdateTabMessage = {
             type: TabMessageTypeEnum.CONFIG_UPDATE,
           };
-          initOpenAI().then(() => {
+          initConfig().then(() => {
             chrome.tabs.query({ url: "*://*.twitter.com/*" }, (tabs) => {
               tabs.forEach((tab) => {
                 if (typeof tab.id === "number") { // 确保 tab.id 是一个数字
-                  chrome.tabs.sendMessage(tab.id, sendMessage);
+                  sendTabMessage(tab.id, sendMessage);
                 }
               });
             });
             chrome.tabs.query({ url: "*://*.x.com/*" }, (tabs) => {
               tabs.forEach((tab) => {
                 if (typeof tab.id === "number") { // 确保 tab.id 是一个数字
-                  chrome.tabs.sendMessage(tab.id, sendMessage);
+                  sendTabMessage(tab.id, sendMessage);
                 }
               });
             });
@@ -86,7 +86,7 @@ export function init() {
 }
 
 async function onLoad() {
-  await initOpenAI();
+  await initConfig();
 
   // 添加标签页监听器
   await addTabListener();

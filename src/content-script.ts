@@ -2,12 +2,13 @@
  * @fileoverview The **main** content script.
  */
 
-import logger from "./common/logging";
+import logger, { log } from "./common/logging";
 import "./tailwind.css";
 import { execNotionTranslate, execTranslate } from "./components/translate";
-import { translateConfig, ttTwitterInit } from "./components/_twitter";
+import { ttTwitterInit } from "./components/_twitter";
 import { TabMessage, TabMessageTypeEnum } from "./common/tabs-message";
 import { ttProductHuntInit } from "./components/_producthunt";
+import { config, initConfig } from "./config/storage-config";
 
 async function init() {
   const now = new Date();
@@ -27,11 +28,9 @@ async function init() {
 
     switch (message.type) {
       case TabMessageTypeEnum.CONFIG_UPDATE:
-        chrome.storage.local.get().then(({ alwaysTranslate }) => {
-          if (alwaysTranslate !== undefined) {
-            translateConfig.xTranslate = alwaysTranslate;
-          }
-        });
+        initConfig().then(() => {
+          log("CONFIG_UPDATE DONE")
+        })
         break;
       case TabMessageTypeEnum.X_URl:
         ttTwitterInit(message.data.url);
@@ -42,15 +41,12 @@ async function init() {
     }
   });
 
-  chrome.storage.local.get().then(({ alwaysTranslate }) => {
-    if (alwaysTranslate !== undefined) {
-      translateConfig.xTranslate = alwaysTranslate;
-    }
-  });
+  await initConfig();
 
   let currentClientX = 0;
   let currentClientY = 0;
   let isTranslating = false;
+  let shiftKey = false;
   let ctrlKey = false;
   let eventKey = "";
 
@@ -62,37 +58,37 @@ async function init() {
 
   // 监听抬起事件
   document.addEventListener("keyup", async () => {
-    if (
-      ctrlKey && eventKey === "Control" && currentClientX && currentClientY
-    ) {
-      if (isTranslating) {
-        return;
-      }
-      try {
-        isTranslating = true;
-        if (window.location.hostname.includes("notion.site")) {
-          await execNotionTranslate(currentClientX, currentClientY);
-        } else {
-          await execTranslate(currentClientX, currentClientY);
+    const shift = config.value.basic.shortcut.shift;
+    const ctrl = config.value.basic.shortcut.ctrl;
+    if ((shift && shiftKey && eventKey === "") || (ctrl && ctrlKey && eventKey === "Control")) {
+      if (currentClientX && currentClientY) {
+        try {
+          if (isTranslating) {
+            return;
+          }
+          isTranslating = true;
+          if (window.location.hostname.includes("notion.site")) {
+            await execNotionTranslate(currentClientX, currentClientY);
+          } else {
+            await execTranslate(currentClientX, currentClientY);
+          }
+        } catch (error) {
+          console.error(error);
+        } finally {
+          isTranslating = false;
         }
-      } catch (error) {
-        console.error(error);
-      } finally {
-        isTranslating = false;
       }
     }
-    ctrlKey = false;
-    eventKey = "";
   });
 
   // 监听按下事件
   document.addEventListener("keydown", async (event) => {
+    shiftKey = event.shiftKey;
     ctrlKey = event.ctrlKey;
     eventKey = event.key;
   });
 }
 
-console.log("11111")
 init().then(() => {
-  console.log("22222")
+  console.log("init success")
 })

@@ -14,11 +14,8 @@ import {
   RuntimeMessageTypeEnum,
   sendRuntimeMessage,
 } from "../common/runtime-message";
-import logger from "../common/logging";
-
-export const translateConfig = {
-  xTranslate: false,
-};
+import logger, { log } from "../common/logging";
+import { config } from "../config/storage-config";
 
 enum XUrlEnum {
   HOME = "/home",
@@ -66,10 +63,11 @@ export async function ttTwitterInit(url: string): Promise<void> {
       break;
   }
 
-  logger.log("translateConfig.xTranslate: ", translateConfig.xTranslate)
-  if (translateConfig.xTranslate) {
+  log("11 - ", config.value.basic.autoTranslate)
+  if (config.value.basic.autoTranslate) {
     execObserver(document.body, async () => {
-      if (translateConfig.xTranslate) {
+      log("22 - ", config.value.basic.autoTranslate)
+      if (config.value.basic.autoTranslate) {
         await ttTwitterTranslate();
         return false;
       }

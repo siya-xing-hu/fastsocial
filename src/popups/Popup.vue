@@ -1,7 +1,7 @@
 <template>
   <div class="w-80 min-w-80 box-border bg-gray-200">
     <div class="text-sm bg-white px-5 py-4 rounded-b-xl">
-      <div class="flex items-center justify-between ml-1" style="height: 28px;">
+      <!-- <div class="flex items-center justify-between ml-1" style="height: 28px;">
         <div class="flex items-center"><a class="flex items-center text-decoration-none" target="_blank"
             href="https://immersivetranslate.com/accounts/login?from=plugin&amp;utm_source=extension&amp;utm_medium=extension&amp;utm_campaign=popup_more"><img
               src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAMAAADXqc3KAAAAn1BMVEUAAADt7vHu7vLu7vLv7+/n5+fFxcXu7vHv7/PHx8eamprt7fLt7fHn5+vGxsbS09Surq6fn5+ZmZmZmZnGxsbGxsbt7/K/v7/Hx8ft7vHGxsaZmZn09vnk5eeqqquenp7p6u3X2NnLy8vU1dbr7O67u7uvr6/o6evh4uPR0dLCwsLAwMDZ2ty9vb6kpaWhoaHe3+HPz8+zs7OkpKTc3d7Gt0R8AAAAGXRSTlMA779wIBDv338gv5+AgHDv7+/v36+gn3BgD0kJmgAAAS1JREFUKM9dkOmSgyAQhNFo7mTvYwYEBa9oorne/9l2hqJSbr4q+NHNdBcjAukyXgBE8SwRU5IYHmwm1iyCCdFMBJbwxDK8B2iKLGjl8VAC+JmEcqzRrmnP5yzrbm93SuOeDQCcpNToGaV8ISGmAfBGPce+qjrsjSxYSbkBGtt1tZGEueLpwsZW8A8snlj2jD0efRZVtxzw4Ia2BFgIch1qOaHCM4lsHHA0WpOpKyk7qX2WWLBhhhxU7grlKlV7I+LyAm+DUplS/sqv2HL5FiDDSio15CQOdHrrl5L6kpqEMOHwTlIiOKu0WIDy5Bfkn3+HJTYXRNdmWXtA1nmJfu1lgRNcQw2encV/2J0I7OdIXM1YIzH/FQ9WX4i1JF4RP1dBDNZ+/S7lx/onDcIfdi8x4pYpSxgAAAAASUVORK5CYII="><span
@@ -17,42 +17,46 @@
               d="M19 8H9C8.44772 8 8 8.44772 8 9V11H20V9C20 8.44772 19.5523 8 19 8ZM21 11V9C21 7.89543 20.1046 7 19 7H9C7.89543 7 7 7.89543 7 9V11V12V19C7 20.1046 7.89543 21 9 21H13V20H9C8.44772 20 8 19.5523 8 19V12H20V14H21V12V11ZM9 9H11V10H9V9ZM17 9H15V10H17V9ZM12 9H14V10H12V9ZM21 17H18V14H17V17H14V18H17V21H18V18H21V17Z">
             </path>
           </svg></div>
-      </div>
+      </div> -->
 
       <div class="mt-3 rounded-xl bg-gray-100">
         <div class="flex items-center h-11 pl-4">
-          <label class="inline-block text-label mb-0 text-gray-6" style="min-width: 70px;">API-KEY：</label>
-          <input type="password" v-model="apiKey" @blur="handleChange('apiKey', apiKey)" class="pl-3">
-        </div>
-      </div>
-
-      <div class="mt-3 rounded-xl bg-gray-100">
-        <div class="flex items-center h-11 pl-4">
-          <label class="inline-block text-label mb-0 text-gray-6" style="min-width: 70px;">ORG：</label>
-          <input type="password" v-model="org" @blur="handleChange('org', org)" class="pl-3">
-        </div>
-      </div>
-
-
-
-      <div class="mt-3 rounded-xl bg-gray-100">
-        <div class="flex items-center h-11 pl-4">
-          <label class="inline-block text-label mb-0 text-gray-6" style="min-width: 70px;">Model：</label>
-          <select v-model="model" @change="handleChange('model', model)" autocomplete="off" class="pl-3">
-            <option value="gpt-3.5-turbo">GPT-3.5</option>
-            <option value="gpt-4-turbo">GPT-4</option>
-            <option value="gpt-4o">GPT-4o</option>
+          <label class="inline-block text-label mb-0 text-gray-6">AI服务:</label>
+          <select v-model="config.basic.aiProvider" @change="onInput()" class="pl-3">
+            <option value="chatgpt">ChatGPT</option>
+            <option value="ollama">Ollama</option>
           </select>
+        </div>
+      </div>
+
+      <div class="mt-3 rounded-xl bg-gray-100">
+        <div class="flex items-center h-11 pl-4">
+          <label class="inline-block text-label mb-0 text-gray-6">翻译服务:</label>
+          <select v-model="config.basic.provider" @change="onInput()" class="pl-3">
+            <option value="google">Google</option>
+            <option value="deepl">DeepL</option>
+            <option value="chatgpt">ChatGPT</option>
+            <option value="ollama">Ollama</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="mt-3 rounded-xl bg-gray-100">
+        <div class="flex items-center h-11 pl-4">
+          <label class="inline-block text-label mb-0 text-gray-6">快捷键:</label>
+          <div class="shortcut-input pl-3">
+            <input type="checkbox" v-model="config.basic.shortcut.ctrl" @change="onInput()"> Ctrl
+            <input type="checkbox" v-model="config.basic.shortcut.shift" @change="onInput()"> Shift
+          </div>
         </div>
       </div>
 
       <div class="mt-3 text-sm px-1 text-gray-2">
         <div class="flex items-center justify-between">
           <div class="flex items-center">
-            <label class="mb-0 mr-2 shrink-0">Always translate this posts</label>
+            <label class="mb-0 mr-2 shrink-0">自动翻译</label>
           </div>
-          <input type="checkbox" v-model="alwaysTranslate" @change="handleChange('alwaysTranslate', alwaysTranslate)"
-            role="switch" class="shrink-0 w-9 h-3">
+          <input type="checkbox" v-model="config.basic.autoTranslate" @change="onInput()" role="switch" class="shrink-0 w-9 h-3">
         </div>
       </div>
     </div>
@@ -73,29 +77,15 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted } from "vue";
-import { onInput } from "../config";
-
-const apiKey = ref<string>('');
-const org = ref<string>('');
-const model = ref<string>('gpt-3.5-turbo');
-const alwaysTranslate = ref<boolean>(false);
-
-function handleChange(field: string, value: any) {
-  onInput(field, value);
-}
+import { onMounted } from "vue";
+import { config, initConfig, onInput } from "../config/storage-config";
 
 function openOptions() {
   chrome.runtime.openOptionsPage();
 }
 
 onMounted(async () => {
-  const storage = await chrome.storage.local.get()
-
-  apiKey.value = storage["apiKey"] ?? "";
-  org.value = storage["org"] ?? "";
-  model.value = storage["model"] ?? 'gpt-3.5-turbo';
-  alwaysTranslate.value = storage["alwaysTranslate"] ?? false;
+  await initConfig();
 });
 </script>
 

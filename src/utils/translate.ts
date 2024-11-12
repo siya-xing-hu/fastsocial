@@ -1,14 +1,14 @@
+import { config } from "../config/storage-config";
 import { stringifyQueryParameter } from "./common";
-import googleTranslatorAPI from "../config/translate-config";
 
 export async function translate(
   text: string,
   locale: string,
 ): Promise<any> {
-  let url = googleTranslatorAPI + "?client=gtx&dt=t&" +
+  let url = import.meta.env.VITE_GOOGLE_TRANSLATOR_API + "?client=gtx&dt=t&" +
     stringifyQueryParameter({
       q: text,
-      tl: "zh_CN",
+      tl: config.value.basic.targetLang,
       sl: locale,
       client: "dict-chrome-ex",
     });

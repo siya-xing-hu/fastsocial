@@ -1,14 +1,12 @@
 // read version number from package.json
 import { version } from "./package.json";
 import { defineManifest } from "@crxjs/vite-plugin";
-import googleTranslatorAPI from "./src/config/translate-config";
 
 const isDevHostsEnabled = true;
 
 const prodHostPermissions = [
   "https://twitter.com/*",
-  "https://x.com/*",
-  googleTranslatorAPI
+  "https://x.com/*"
 ];
 
 const devHostPermissions = [
