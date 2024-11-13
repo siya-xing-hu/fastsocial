@@ -1,9 +1,9 @@
 import { log } from "../common/logging";
-import { ButtonTagEnum } from "../components/button";
+import { ButtonConfig } from "../config/storage-config";
 import { config, OllamaConfig, OpenAIConfig } from "../config/storage-config";
 
 export async function execGptPrompt(
-  operation: ButtonTagEnum,
+  button: ButtonConfig,
   content: string,
 ): Promise<string> {
 
@@ -12,20 +12,19 @@ export async function execGptPrompt(
   if (aiProvider === 'ollama') {
     res = await ollamaCreate(
       config.value.aiService.ollama,
-      '帮我将引号里的内容翻译成英文："' + content + '", JSON 格式输出，输出格式： {"result": ""}'
+      `${button.prompt}: "${content}", JSON 格式输出，输出格式： {"result": ""}`
     );
   } else if (aiProvider === 'chatgpt') {
     const messageData = [
-    {
-      "role": "system",
-      "content":
-        '你是一个 twitter 内容回复者，我需要你按照用户的回复要求，结合待回复的原文，生成一条回复内容，用英文输出，JSON 格式输出，输出格式： {"result": ""}',
-    },
-    {
-      "role": "user",
-      "content": `Replies to tweet: '${content}', Reply style: '${operation.toLocaleLowerCase()}'`,
-    },
-  ];
+      {
+        "role": "system",
+        "content": button.prompt
+      },
+      {
+        "role": "user",
+        "content": content
+      }
+    ];
     res = await openaiCreate(config.value.aiService.openai, messageData);
   }
 

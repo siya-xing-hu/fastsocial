@@ -1,10 +1,13 @@
 <template>
-  <div>
-    <!-- 遍历按钮列表 -->
-    <button v-for="button in buttonList" :key="button.tag" :id="button.tag" :disabled="button.disabled"
-      class="bg-blue-400 hover:bg-blue-500 text-white font-light py-1 px-2 rounded-md m-0.5"
-      @click="handleClick(button)">
-      {{ button.text }}
+  <div class="flex flex-wrap gap-2">
+    <button v-for="button in buttonList" :key="button.id" :id="button.id" :disabled="!button.enabled"
+      class="twitter-btn" @click="handleClick(button)">
+      <span class="flex items-center">
+        {{ button.icon + " " + button.name }}
+        <span v-if="!button.enabled" class="ml-2">
+          <i class="fas fa-spinner fa-spin"></i>
+        </span>
+      </span>
     </button>
   </div>
 </template>
@@ -13,16 +16,28 @@
 import { ButtonData, buttonList } from "./button";
 
 const handleClick = async (button: ButtonData) => {
-  if (button.disabled) {
-    return;
-  }
-  button.disabled = true; // 禁用按钮
+  if (!button.enabled) return;
+
   try {
-    await button.handler(button.tag, button.params);
+    button.enabled = false;
+    await button.handler(button, button.params);
   } finally {
-    button.disabled = false; // 重新启用按钮
+    button.enabled = true;
   }
 };
 </script>
 
-<style></style>
+<style scoped>
+.twitter-btn {
+  @apply inline-flex justify-center items-center px-3 py-1.5 rounded-full text-sm font-medium;  /* 调整大小和字体 */
+  @apply bg-[#1d9bf0] text-white;
+  @apply hover:bg-[#1a8cd8] active:bg-[#177cc0];
+  @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply mt-2;  /* 添加上方间距 */
+  transition: all 0.2s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.twitter-btn:disabled {
+  @apply hover:bg-[#1d9bf0];
+}
+</style>

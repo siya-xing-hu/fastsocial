@@ -1,27 +1,14 @@
 import { createApp, ref } from "vue";
 import Button from "./Button.vue";
+import { ButtonConfig } from '../config/storage-config';
 
 export interface HandlerParams {
   data: any;
 }
 
-export enum ButtonTagEnum {
-  TRANSLATE = "translate",
-  GENERATE = "generate",
-  APPROVAL = "approval",
-  DISAPPROVAL = "disapproval",
-  SUPPORT = "support",
-  JOKE = "joke",
-  IDEA = "idea",
-  QUESTION = "question",
-}
-
-export interface ButtonData {
-  disabled: boolean;
-  tag: ButtonTagEnum;
-  text: string;
+export interface ButtonData extends ButtonConfig {
+  handler: (button: ButtonConfig, params: HandlerParams) => void | Promise<void>;
   params: HandlerParams;
-  handler: (tag: ButtonTagEnum, params: HandlerParams) => void | Promise<void>;
 }
 
 export enum ButtonLocationEnum {

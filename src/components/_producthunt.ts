@@ -1,9 +1,9 @@
 import logger from "../common/logging";
 import { AIGenarateRuntimeMessage, RuntimeMessageTypeEnum, sendRuntimeMessage } from "../common/runtime-message";
+import { ButtonConfig, config } from "../config/storage-config";
 import { setInputText } from "../utils/common";
 import {
   buttonList,
-  ButtonTagEnum,
   HandlerParams,
 } from "./button";
 import { createDialogContainer } from "./dialog";
@@ -39,20 +39,20 @@ async function ttProductHuntReply(): Promise<boolean> {
   );
 
   buttonList.value.push(
-    {
-      disabled: false,
-      tag: ButtonTagEnum.TRANSLATE,
-      text: "🌎 Translate",
-      params: { data: { textareaWrapper } },
-      handler: replyHandle,
-    },
+    ...config.value.buttons.producthunt.reply
+      .filter(btn => btn.enabled)
+      .map(btn => ({
+        ...btn,
+        params: { data: { textareaWrapper } },
+        handler: replyHandle,
+      }))
   );
 
   return true;
 }
 
 async function replyHandle(
-  tag: ButtonTagEnum,
+  button: ButtonConfig,
   params: HandlerParams,
 ): Promise<void> {
   const { textareaWrapper } = params.data;
@@ -65,7 +65,7 @@ async function replyHandle(
     type: RuntimeMessageTypeEnum.AI_GENARATE,
     data: {
       content: textareaWrapper.textContent,
-      operation: tag,
+      button: button,
     },
   };
 

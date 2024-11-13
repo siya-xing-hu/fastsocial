@@ -2,7 +2,6 @@ import { isContent, setInputText } from "../utils/common";
 import {
   buttonList,
   ButtonLocationEnum,
-  ButtonTagEnum,
   createButtonContainer,
   HandlerParams,
 } from "./button";
@@ -15,7 +14,7 @@ import {
   sendRuntimeMessage,
 } from "../common/runtime-message";
 import logger, { log } from "../common/logging";
-import { config } from "../config/storage-config";
+import { ButtonConfig, config } from "../config/storage-config";
 
 enum XUrlEnum {
   HOME = "/home",
@@ -63,7 +62,6 @@ export async function ttTwitterInit(url: string): Promise<void> {
       break;
   }
 
-  log("11 - ", config.value.basic.autoTranslate)
   if (config.value.basic.autoTranslate) {
     execObserver(document.body, async () => {
       log("22 - ", config.value.basic.autoTranslate)
@@ -94,27 +92,24 @@ async function ttTwitterHome(): Promise<boolean> {
   if (toolBarParentWrapper.getAttribute("tt-button-is-done") === "true") {
     return true;
   }
+
   createButtonContainer(
     toolBarParentWrapper as HTMLElement,
     ButtonLocationEnum.Previous,
   );
 
+  log("111 = ", config.value.buttons.twitter.post)
+  // 将配置的按钮添加到buttonList
   buttonList.value.push(
-    {
-      disabled: false,
-      tag: ButtonTagEnum.GENERATE,
-      text: "✨ Generate",
-      params: { data: { mainWrapper } },
-      handler: generateHandle,
-    },
-    {
-      disabled: false,
-      tag: ButtonTagEnum.TRANSLATE,
-      text: "🌎 Translate",
-      params: { data: { mainWrapper } },
-      handler: generateHandle,
-    },
+    ...Object.values(config.value.buttons.twitter.post)
+      .filter(btn => btn.enabled)
+      .map(btn => ({
+        ...btn,
+        params: { data: { mainWrapper } },
+        handler: generateHandle,
+      }))
   );
+
   return true;
 }
 
@@ -134,6 +129,7 @@ async function ttTwitterPost(): Promise<boolean> {
   if (toolBarParentWrapper.getAttribute("tt-button-is-done") === "true") {
     return true;
   }
+
   createButtonContainer(
     toolBarParentWrapper as HTMLElement,
     ButtonLocationEnum.Previous,
@@ -144,78 +140,32 @@ async function ttTwitterPost(): Promise<boolean> {
   ) as HTMLElement;
 
   if (replayTweetTextWrapper) {
-    // reply
+    // 回复场景
     const replayContent = replayTweetTextWrapper.textContent || "";
     if (replayContent === "") {
       return false;
     }
+
+    // 从配置中获取回复按钮
     buttonList.value.push(
-      {
-        disabled: false,
-        tag: ButtonTagEnum.APPROVAL,
-        text: "👍 Approval",
-        params: { data: { mainWrapper, replayContent } },
-        handler: generateHandle,
-      },
-      {
-        disabled: false,
-        tag: ButtonTagEnum.DISAPPROVAL,
-        text: "👎 Disapproval",
-        params: { data: { mainWrapper, replayContent } },
-        handler: generateHandle,
-      },
-      {
-        disabled: false,
-        tag: ButtonTagEnum.SUPPORT,
-        text: "🫶 Support",
-        params: { data: { mainWrapper, replayContent } },
-        handler: generateHandle,
-      },
-      {
-        disabled: false,
-        tag: ButtonTagEnum.JOKE,
-        text: "🔥 Joke",
-        params: { data: { mainWrapper, replayContent } },
-        handler: generateHandle,
-      },
-      {
-        disabled: false,
-        tag: ButtonTagEnum.IDEA,
-        text: "💡 Idea",
-        params: { data: { mainWrapper, replayContent } },
-        handler: generateHandle,
-      },
-      {
-        disabled: false,
-        tag: ButtonTagEnum.QUESTION,
-        text: "❓ Question",
-        params: { data: { mainWrapper, replayContent } },
-        handler: generateHandle,
-      },
-      {
-        disabled: false,
-        tag: ButtonTagEnum.TRANSLATE,
-        text: "🌎 Translate",
-        params: { data: { mainWrapper } },
-        handler: generateHandle,
-      },
+      ...Object.values(config.value.buttons.twitter.reply)
+        .filter(btn => btn.enabled)
+        .map(btn => ({
+          ...btn,
+          params: { data: { mainWrapper, replayContent } },
+          handler: generateHandle,
+        }))
     );
   } else {
+    // 发推场景
     buttonList.value.push(
-      {
-        disabled: false,
-        tag: ButtonTagEnum.GENERATE,
-        text: "✨ Generate",
-        params: { data: { mainWrapper } },
-        handler: generateHandle,
-      },
-      {
-        disabled: false,
-        tag: ButtonTagEnum.TRANSLATE,
-        text: "🌎 Translate",
-        params: { data: { mainWrapper } },
-        handler: generateHandle,
-      },
+      ...Object.values(config.value.buttons.twitter.post)
+        .filter(btn => btn.enabled)
+        .map(btn => ({
+          ...btn,
+          params: { data: { mainWrapper } },
+          handler: generateHandle,
+        }))
     );
   }
 
@@ -231,33 +181,33 @@ async function ttTwitterDM(): Promise<boolean> {
     return false;
   }
 
-  // 添加翻译按钮响应事件
   if (dmWrapper.getAttribute("tt-button-is-done") === "true") {
     return true;
   }
+
   createButtonContainer(
     dmWrapper as HTMLElement,
     ButtonLocationEnum.ParentPrevious,
   );
 
+  // 从配置中获取DM按钮
   buttonList.value.push(
-    {
-      disabled: false,
-      tag: ButtonTagEnum.TRANSLATE,
-      text: "🌎 Translate",
-      params: { data: { dmWrapper } },
-      handler: dmGenerateHandle,
-    },
+    ...Object.values(config.value.buttons.twitter.dm)
+      .filter(btn => btn.enabled)
+      .map(btn => ({
+        ...btn,
+        params: { data: { dmWrapper } },
+        handler: dmGenerateHandle,
+      }))
   );
 
   return true;
 }
 
 async function generateHandle(
-  tag: ButtonTagEnum,
+  button: ButtonConfig,
   params: HandlerParams,
 ): Promise<void> {
-  console.log("generateHandle", tag, params);
   const { mainWrapper, replayContent } = params.data;
   if (!mainWrapper) {
     return;
@@ -280,9 +230,10 @@ async function generateHandle(
     type: RuntimeMessageTypeEnum.AI_GENARATE,
     data: {
       content: sourceContent,
-      operation: tag,
+      button: button, // 传递完整的按钮配置
     },
   };
+
   const response = await sendRuntimeMessage(message);
   if (!response.is_ok) {
     logger.error("AI generate failed", response.error);
@@ -293,21 +244,18 @@ async function generateHandle(
   createDialogContainer(
     generateText,
     () => {
-      // 确认按钮的回调
       setInputText(tweetTextareaWrapper, generateText);
     },
     () => {
-      // 取消按钮的回调
       console.log("Operation cancelled.");
     },
   );
 }
 
 async function dmGenerateHandle(
-  tag: ButtonTagEnum,
+  button: ButtonConfig,
   params: HandlerParams,
 ): Promise<void> {
-  console.log("dmGenerateHandle", tag, params);
   const { dmWrapper } = params.data;
   if (!dmWrapper) {
     return;
@@ -328,7 +276,7 @@ async function dmGenerateHandle(
     type: RuntimeMessageTypeEnum.AI_GENARATE,
     data: {
       content: sourceContent,
-      operation: tag,
+      button: button, // 传递完整的按钮配置
     },
   };
   const response = await sendRuntimeMessage(message);
@@ -341,11 +289,9 @@ async function dmGenerateHandle(
   createDialogContainer(
     generateText,
     () => {
-      // 确认按钮的回调
       setInputText(dmTextareaWrapper, generateText);
     },
     () => {
-      // 取消按钮的回调
       console.log("Operation cancelled.");
     },
   );

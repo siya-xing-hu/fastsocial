@@ -65,7 +65,7 @@ export function init() {
           retry(
             async () => {
               return Promise.resolve(
-                await execGptPrompt(data.operation, data.content),
+                await execGptPrompt(data.button, data.content),
               );
             },
             1,

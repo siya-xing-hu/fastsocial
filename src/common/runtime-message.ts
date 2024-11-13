@@ -1,8 +1,7 @@
 /**
  * @fileoverview 用于 chrome.runtime.sendMessage 的统一消息结构
  */
-
-import { ButtonTagEnum } from "../components/button";
+import { ButtonConfig } from "../config/storage-config";
 import logger from "./logging";
 
 // 用于 chrome.runtime.sendMessage 的统一消息结构
@@ -33,7 +32,7 @@ export interface AIGenarateRuntimeMessage {
 
 export interface AIGenarateData {
   content: string;
-  operation: ButtonTagEnum;
+  button: ButtonConfig;
 }
 
 // 用于 chrome.runtime.sendMessage 的统一响应结构
