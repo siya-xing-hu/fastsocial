@@ -351,11 +351,23 @@ const addButton = (platform: string, page: string) => {
     enabled: true
   };
 
+  let buttons: ButtonConfig[] | undefined;
+  if (platform === 'twitter') {
+    buttons = config.value.buttons.twitter[page as keyof typeof config.value.buttons.twitter] as ButtonConfig[];
+  } else if (platform === 'producthunt') {
+    buttons = config.value.buttons.producthunt[page as keyof typeof config.value.buttons.producthunt] as ButtonConfig[];
+  }
+  if (!buttons) {
+    buttons = [];
+  }
+  const data = Object.values(buttons);
+  data.push(newButton);
+
   // 使用类型断言确保类型安全
   if (platform === 'twitter') {
-    (config.value.buttons.twitter[page as keyof typeof config.value.buttons.twitter] as ButtonConfig[]).push(newButton);
+    config.value.buttons.twitter[page as keyof typeof config.value.buttons.twitter] = data;
   } else if (platform === 'producthunt') {
-    (config.value.buttons.producthunt[page as keyof typeof config.value.buttons.producthunt] as ButtonConfig[]).push(newButton);
+    config.value.buttons.producthunt[page as keyof typeof config.value.buttons.producthunt] = data;
   }
 };
 
@@ -369,18 +381,18 @@ const removeButton = (platform: string, page: string, id: string) => {
   }
 
   if (buttons) {
-    log("11 =>", buttons, "id: ", id)
     const data = Object.values(buttons);
-    log("1111 =>", data)
     const index = data.findIndex(b => b.id == id);
 
-    log("22 =>", index)
     if (index > -1) {
       data.splice(index, 1);
-      log("33 =>", data)
     }
 
-    log("44 =>", buttons)
+    if (platform === 'twitter') {
+      config.value.buttons.twitter[page as keyof typeof config.value.buttons.twitter] = data;
+    } else if (platform === 'producthunt') {
+      config.value.buttons.producthunt[page as keyof typeof config.value.buttons.producthunt] = data;
+    }
   }
 };
 </script>
