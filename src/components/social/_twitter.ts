@@ -1,20 +1,20 @@
-import { log, log_error } from "../common/logging";
+import { log, log_error } from "../../common/logging";
 import {
   AIGenarateRuntimeMessage,
   RuntimeMessageTypeEnum,
   sendRuntimeMessage,
-} from "../common/runtime-message";
-import { ButtonConfig, config } from "../common/storage-config";
-import { isContent, setInputText } from "../utils/kit";
-import { execObserver } from "../utils/mutationObserver";
+} from "../../common/runtime-message";
+import { ButtonConfig, config } from "../../common/storage-config";
+import { isContent, setInputText } from "../../utils/kit";
+import { execObserver } from "../../utils/mutationObserver";
 import {
   buttonList,
   ButtonLocationEnum,
   createButtonContainer,
   HandlerParams,
-} from "./button";
-import { createDialogContainer } from "./dialog";
-import { translateContent } from "./translate";
+} from "../ui/button";
+import { createDialogContainer } from "../ui/dialog";
+import { translateContent } from "../translate/text-translator";
 
 enum XUrlEnum {
   HOME = "/home",
@@ -64,7 +64,6 @@ export async function ttTwitterInit(url: string): Promise<void> {
 
   if (config.value.basic.autoTranslate) {
     execObserver(document.body, async () => {
-      log("22 - ", config.value.basic.autoTranslate)
       if (config.value.basic.autoTranslate) {
         await ttTwitterTranslate();
         return false;
@@ -322,7 +321,7 @@ async function ttTwitterTranslate(): Promise<void> {
     // 获取 tweetWrapper 子节点的所有 span 元素
     const spanContentWrapper = [...tweetWrapper.querySelectorAll("span")];
 
-    // 将 span 元素遍历，过滤出非表情的文本元素，将文本内容依次替换成 “你好”
+    // 将 span 元素遍历，过滤出非表情的文本元素，将文本内容依次替换成 "你好"
     spanContentWrapper.forEach((span) => {
       // 如果 span 元素还有子节点，过滤
       const textContent = span.textContent;

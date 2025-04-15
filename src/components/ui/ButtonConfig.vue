@@ -30,7 +30,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { ButtonConfig } from '../common/storage-config';
+import type { ButtonConfig } from '../../common/storage-config';
 
 const props = defineProps<{
   title: string;

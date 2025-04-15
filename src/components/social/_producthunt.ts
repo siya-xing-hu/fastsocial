@@ -1,14 +1,14 @@
-import { log, log_error } from "../common/logging";
+import { log, log_error } from "../../common/logging";
 import {
   AIGenarateRuntimeMessage,
   RuntimeMessageTypeEnum,
   sendRuntimeMessage,
-} from "../common/runtime-message";
-import { ButtonConfig, config } from "../common/storage-config";
-import { setInputText } from "../utils/kit";
-import { execObserver } from "../utils/mutationObserver";
-import { buttonList, HandlerParams } from "./button";
-import { createDialogContainer } from "./dialog";
+} from "../../common/runtime-message";
+import { ButtonConfig, config } from "../../common/storage-config";
+import { setInputText } from "../../utils/kit";
+import { execObserver } from "../../utils/mutationObserver";
+import { buttonList, HandlerParams } from "../ui/button";
+import { createDialogContainer } from "../ui/dialog";
 
 export async function ttProductHuntInit(url: string): Promise<void> {
   execObserver(document.body, async () => {

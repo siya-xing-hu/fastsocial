@@ -2,8 +2,8 @@
  * @fileoverview 处理鼠标和键盘监听事件的模块
  */
 
-import { log, log_error } from "../common/logging";
-import { execNotionTranslate, execTranslate } from "./translate";
+import { log, log_error } from "../../common/logging";
+import { execNotionTranslate, execTranslate } from "../translate/text-translator";
 
 // 鼠标位置
 let mousePosition = { x: 0, y: 0 };

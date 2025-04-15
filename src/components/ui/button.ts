@@ -1,6 +1,6 @@
 import { createApp, ref } from "vue";
 import Button from "./Button.vue";
-import { ButtonConfig } from '../common/storage-config';
+import { ButtonConfig } from '../../common/storage-config';
 
 export interface HandlerParams {
   data: any;
@@ -18,6 +18,10 @@ export enum ButtonLocationEnum {
   ParentPrevious = "parent-previous",
   // 下一个
   Next = "next",
+  // 父级下一个
+  ParentNext = "parent-next",
+  // 内部
+  Inside = "inside",
 }
 
 export const buttonList = ref<ButtonData[]>([]);
@@ -71,6 +75,21 @@ export function createButtonContainer(
       } else {
         targetWrapper.parentElement?.appendChild(div);
       }
+      break;
+    case ButtonLocationEnum.ParentNext:
+      // 获取 tweetWrapper 的父元素
+      const parentNextElement = targetWrapper.parentNode?.parentNode;
+      // 确保存在父元素的父元素
+      if (parentNextElement) {
+        // 将新创建的容器添加到父元素的父元素中
+        parentNextElement.insertBefore(div, targetWrapper.parentNode);
+      } else {
+        targetWrapper.appendChild(div);
+      }
+      break;
+    case ButtonLocationEnum.Inside:
+      // 将新创建的容器添加到 tweetWrapper 内部
+      targetWrapper.appendChild(div);
       break;
     default:
       targetWrapper.appendChild(div);

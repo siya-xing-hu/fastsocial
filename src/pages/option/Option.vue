@@ -308,7 +308,7 @@
 import { ref, onMounted, computed } from "vue";
 import { config, initConfig, onInput } from "../../common/storage-config";
 import type { ButtonConfig as ButtonConfigType } from "../../common/storage-config";
-import ButtonConfig from "../../components/ButtonConfig.vue";
+import ButtonConfig from "../../components/ui/ButtonConfig.vue";
 import { log_error } from "../../common/logging";
 
 // 使用 computed 优化菜单项

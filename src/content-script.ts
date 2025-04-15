@@ -5,9 +5,9 @@
 import { log } from "./common/logging";
 import { initConfig } from "./common/storage-config";
 import { TabMessage, TabMessageTypeEnum } from "./common/tabs-message";
-import { ttProductHuntInit } from "./components/_producthunt";
-import { ttTwitterInit } from "./components/_twitter";
-import { initEventListeners } from "./components/event-listeners";
+import { ttProductHuntInit } from "./components/social/_producthunt";
+import { ttTwitterInit } from "./components/social/_twitter";
+import { initEventListeners } from "./components/events/event-listeners";
 import "./tailwind.css";
 
 async function init() {
@@ -29,8 +29,8 @@ async function init() {
     switch (message.type) {
       case TabMessageTypeEnum.CONFIG_UPDATE:
         initConfig().then(() => {
-          log("CONFIG_UPDATE DONE");
-        });
+          log("CONFIG_UPDATE DONE")
+        })
         break;
       case TabMessageTypeEnum.X_URl:
         ttTwitterInit(message.data.url);
@@ -42,7 +42,7 @@ async function init() {
   });
 
   await initConfig();
-
+  
   // 初始化事件监听器
   initEventListeners();
 }

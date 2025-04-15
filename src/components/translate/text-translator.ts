@@ -1,12 +1,16 @@
-import { isContent, randomString } from "../utils/kit";
+/**
+ * @fileoverview 文本翻译功能模块
+ */
+
+import { isContent, randomString } from "../../utils/kit";
 import { createApp } from "vue";
 import Translate from "./Translate.vue";
 import {
   RuntimeMessageTypeEnum,
   sendRuntimeMessage,
   TranslateRuntimeMessage,
-} from "../common/runtime-message";
-import { log, log_error } from "../common/logging";
+} from "../../common/runtime-message";
+import { log, log_error } from "../../common/logging";
 
 interface TranslateData {
   id?: string;
@@ -16,6 +20,11 @@ interface TranslateData {
 
 const translateDataList: TranslateData[] = [];
 
+/**
+ * 翻译文本内容
+ * @param text 要翻译的文本
+ * @returns 翻译后的文本
+ */
 export async function translateContent(text: string): Promise<string> {
   const message: TranslateRuntimeMessage = {
     type: RuntimeMessageTypeEnum.TRANSLATE,
@@ -32,6 +41,11 @@ export async function translateContent(text: string): Promise<string> {
   return response.data;
 }
 
+/**
+ * 执行普通网页的翻译操作
+ * @param clientX 鼠标X坐标
+ * @param clientY 鼠标Y坐标
+ */
 export async function execTranslate(
   clientX: number,
   clientY: number,
@@ -106,6 +120,11 @@ export async function execTranslate(
   }
 }
 
+/**
+ * 执行Notion页面的翻译操作
+ * @param clientX 鼠标X坐标
+ * @param clientY 鼠标Y坐标
+ */
 export async function execNotionTranslate(
   clientX: number,
   clientY: number,
@@ -133,6 +152,12 @@ export async function execNotionTranslate(
   }
 }
 
+/**
+ * 查找最近的文本元素
+ * @param clientX 鼠标X坐标
+ * @param clientY 鼠标Y坐标
+ * @returns 找到的HTML元素或null
+ */
 function findNearestDivAndText(
   clientX: number,
   clientY: number,
@@ -166,6 +191,11 @@ function findNearestDivAndText(
   return targetDiv;
 }
 
+/**
+ * 创建翻译容器
+ * @param targetDiv 目标元素
+ * @param translateData 翻译数据
+ */
 function createContainer(
   targetDiv: HTMLElement,
   translateData: TranslateData,
@@ -196,4 +226,4 @@ function createContainer(
     targetDiv.appendChild(div);
   }
   targetDiv.setAttribute("text-is-translated", translateData.id);
-}
+} 
