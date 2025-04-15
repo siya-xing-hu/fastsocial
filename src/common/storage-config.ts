@@ -1,11 +1,6 @@
 import { ref } from "vue";
-import { debounce } from "../utils/common";
-import { ConfigUpdateRuntimeMessage, RuntimeMessageTypeEnum, sendRuntimeMessage } from "../common/runtime-message";
-
-export interface ShortcutConfig {
-  ctrl: boolean;
-  shift: boolean;
-}
+import { debounce } from "../utils/kit";
+import { ConfigUpdateRuntimeMessage, RuntimeMessageTypeEnum, sendRuntimeMessage } from "./runtime-message";
 
 export interface OpenAIConfig {
   apiKey: string;
@@ -48,7 +43,6 @@ interface Config {
     provider: 'google' | 'deepl' | 'chatgpt' | 'ollama';
     targetLang: string;
     autoTranslate: boolean;
-    shortcut: ShortcutConfig;
   };
   aiService: {
     openai: OpenAIConfig;
@@ -64,16 +58,12 @@ const DEFAULT_CONFIG: Config = {
     aiProvider: 'ollama',
     provider: 'google',
     targetLang: 'zh-CN',
-    autoTranslate: false,
-    shortcut: {
-      ctrl: true,
-      shift: true,
-    }
+    autoTranslate: true
   },
   aiService: {
     openai: {
       apiKey: '',
-      model: 'gpt-3.5-turbo'
+      model: 'gpt-4o'
     },
     ollama: {
       endpoint: 'http://localhost:11434',

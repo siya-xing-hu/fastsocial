@@ -1,3 +1,5 @@
+import { log_error } from "../common/logging";
+
 // 定义重试函数的类型
 type RetryFunction = () => Promise<any>;
 
@@ -11,7 +13,7 @@ export function retry(
     const attempt = () => {
       fn().then(resolve).catch((error) => {
         if (maxLimit <= 0) {
-          console.error("Retry failed", error);
+          log_error("Retry failed", error);
         } else {
           setTimeout(attempt, interval * 1000);
           maxLimit--;
@@ -80,7 +82,7 @@ export function setInputText(inputEl: HTMLElement | null, text: string): void {
       }),
     );
   } catch (e) {
-    console.error(e);
+    log_error(e);
   }
 }
 

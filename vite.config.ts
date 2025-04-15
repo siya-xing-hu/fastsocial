@@ -11,7 +11,7 @@ export default defineConfig({
     assetsInlineLimit: 0,
     rollupOptions: {
       input: {
-        popup: "src/popup.html", // 将 popup.html 添加到构建输入
+        popup: "src/pages/popup/popup.html", // 将 popup.html 添加到构建输入
       },
     },
   },

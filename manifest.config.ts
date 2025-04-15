@@ -41,9 +41,9 @@ export default defineManifest(async () => {
     ],
     action: {
       // default_title: "Click to show Fast Social Config",
-      default_popup: "src/popup.html",
+      default_popup: "src/pages/popup/popup.html",
     },
-    options_page: "src/option.html",
+    options_page: "src/pages/option/option.html",
     content_scripts: [
       {
         js: ["src/content-script.ts"],

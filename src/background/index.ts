@@ -1,20 +1,24 @@
-import logger, { log } from "../common/logging";
+import { log, log_error } from "../common/logging";
 import {
   AIGenarateData,
   RuntimeMessage,
   RuntimeMessageResponse,
   RuntimeMessageTypeEnum,
 } from "../common/runtime-message";
-import { ConfigUpdateTabMessage, sendTabMessage, TabMessageTypeEnum } from "../common/tabs-message";
-import { initConfig } from "../config/storage-config";
-import { retry } from "../utils/common";
+import { initConfig } from "../common/storage-config";
+import {
+  ConfigUpdateTabMessage,
+  sendTabMessage,
+  TabMessageTypeEnum,
+} from "../common/tabs-message";
+import { retry } from "../utils/kit";
 import { execGptPrompt } from "../utils/openai";
 import { translate } from "../utils/translate";
 import { addTabListener } from "./listener";
 
 export function init() {
   const now = new Date();
-  logger.log("### init ###", now.toISOString());
+  log("### init ###", now.toISOString());
 
   chrome.runtime.onMessage.addListener(
     (
@@ -82,7 +86,7 @@ export function init() {
   );
 
   // Do load the appState and other things
-  onLoad().catch(logger.error);
+  onLoad().catch(log_error);
 }
 
 async function onLoad() {

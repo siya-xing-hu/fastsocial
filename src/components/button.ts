@@ -1,6 +1,6 @@
 import { createApp, ref } from "vue";
 import Button from "./Button.vue";
-import { ButtonConfig } from '../config/storage-config';
+import { ButtonConfig } from '../common/storage-config';
 
 export interface HandlerParams {
   data: any;

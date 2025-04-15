@@ -1,13 +1,14 @@
-import logger from "../common/logging";
-import { AIGenarateRuntimeMessage, RuntimeMessageTypeEnum, sendRuntimeMessage } from "../common/runtime-message";
-import { ButtonConfig, config } from "../config/storage-config";
-import { setInputText } from "../utils/common";
+import { log, log_error } from "../common/logging";
 import {
-  buttonList,
-  HandlerParams,
-} from "./button";
+  AIGenarateRuntimeMessage,
+  RuntimeMessageTypeEnum,
+  sendRuntimeMessage,
+} from "../common/runtime-message";
+import { ButtonConfig, config } from "../common/storage-config";
+import { setInputText } from "../utils/kit";
+import { execObserver } from "../utils/mutationObserver";
+import { buttonList, HandlerParams } from "./button";
 import { createDialogContainer } from "./dialog";
-import { execObserver } from "./util/mutationObserver";
 
 export async function ttProductHuntInit(url: string): Promise<void> {
   execObserver(document.body, async () => {
@@ -40,12 +41,12 @@ async function ttProductHuntReply(): Promise<boolean> {
 
   buttonList.value.push(
     ...config.value.buttons.producthunt.reply
-      .filter(btn => btn.enabled)
-      .map(btn => ({
+      .filter((btn) => btn.enabled)
+      .map((btn) => ({
         ...btn,
         params: { data: { textareaWrapper } },
         handler: replyHandle,
-      }))
+      })),
   );
 
   return true;
@@ -69,10 +70,9 @@ async function replyHandle(
     },
   };
 
-
   const response = await sendRuntimeMessage(message);
   if (!response.is_ok) {
-    logger.error("AI generate failed", response.error);
+    log_error("AI generate failed", response.error);
     return;
   }
 
@@ -85,24 +85,8 @@ async function replyHandle(
     },
     () => {
       // 取消按钮的回调
-      console.log("Operation cancelled.");
+      log("Operation cancelled.");
     },
   );
 
-  // createDialogContainer(
-  //   generateText,
-  //   () => {
-  //     textareaWrapper.value = generateText;
-  //     // 触发 input 事件以通知浏览器内容已更新
-  //     const inputEvent = new Event("input", {
-  //       bubbles: true,
-  //       cancelable: true,
-  //     });
-  //     textareaWrapper.dispatchEvent(inputEvent);
-  //   },
-  //   () => {
-  //     // 取消按钮的回调
-  //     console.log("Operation cancelled.");
-  //   },
-  // );
 }

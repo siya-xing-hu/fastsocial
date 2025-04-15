@@ -1,6 +1,6 @@
 import { log } from "../common/logging";
-import { ButtonConfig } from "../config/storage-config";
-import { config, OllamaConfig, OpenAIConfig } from "../config/storage-config";
+import { ButtonConfig } from "../common/storage-config";
+import { config, OllamaConfig, OpenAIConfig } from "../common/storage-config";
 
 export async function execGptPrompt(
   button: ButtonConfig,

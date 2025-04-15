@@ -1,8 +1,8 @@
 /**
  * @fileoverview 用于 chrome.runtime.sendMessage 的统一消息结构
  */
-import { ButtonConfig } from "../config/storage-config";
-import logger from "./logging";
+import { log } from "./logging";
+import { ButtonConfig } from "./storage-config";
 
 // 用于 chrome.runtime.sendMessage 的统一消息结构
 export enum RuntimeMessageTypeEnum {
@@ -51,6 +51,6 @@ export interface ErrorRuntimeMessageResponse {
 // 封装 chrome.runtime.sendMessage 统一处理
 export async function sendRuntimeMessage(message: RuntimeMessage) {
   const response: RuntimeMessageResponse = await chrome.runtime.sendMessage(message);
-  logger.log("received response:", response);
+  log("received response:", response);
   return response;
 }

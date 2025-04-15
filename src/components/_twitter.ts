@@ -1,4 +1,12 @@
-import { isContent, setInputText } from "../utils/common";
+import { log, log_error } from "../common/logging";
+import {
+  AIGenarateRuntimeMessage,
+  RuntimeMessageTypeEnum,
+  sendRuntimeMessage,
+} from "../common/runtime-message";
+import { ButtonConfig, config } from "../common/storage-config";
+import { isContent, setInputText } from "../utils/kit";
+import { execObserver } from "../utils/mutationObserver";
 import {
   buttonList,
   ButtonLocationEnum,
@@ -6,15 +14,7 @@ import {
   HandlerParams,
 } from "./button";
 import { createDialogContainer } from "./dialog";
-import { execObserver } from "./util/mutationObserver";
 import { translateContent } from "./translate";
-import {
-  AIGenarateRuntimeMessage,
-  RuntimeMessageTypeEnum,
-  sendRuntimeMessage,
-} from "../common/runtime-message";
-import logger, { log } from "../common/logging";
-import { ButtonConfig, config } from "../config/storage-config";
 
 enum XUrlEnum {
   HOME = "/home",
@@ -236,7 +236,7 @@ async function generateHandle(
 
   const response = await sendRuntimeMessage(message);
   if (!response.is_ok) {
-    logger.error("AI generate failed", response.error);
+    log_error("AI generate failed", response.error);
     return;
   }
 
@@ -247,7 +247,7 @@ async function generateHandle(
       setInputText(tweetTextareaWrapper, generateText);
     },
     () => {
-      console.log("Operation cancelled.");
+      log("Operation cancelled.");
     },
   );
 }
@@ -281,7 +281,7 @@ async function dmGenerateHandle(
   };
   const response = await sendRuntimeMessage(message);
   if (!response.is_ok) {
-    logger.error("AI generate failed", response.error);
+    log_error("AI generate failed", response.error);
     return;
   }
 
@@ -292,7 +292,7 @@ async function dmGenerateHandle(
       setInputText(dmTextareaWrapper, generateText);
     },
     () => {
-      console.log("Operation cancelled.");
+      log("Operation cancelled.");
     },
   );
 }

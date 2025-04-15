@@ -1,4 +1,4 @@
-import { isContent, randomString } from "../utils/common";
+import { isContent, randomString } from "../utils/kit";
 import { createApp } from "vue";
 import Translate from "./Translate.vue";
 import {
@@ -6,7 +6,7 @@ import {
   sendRuntimeMessage,
   TranslateRuntimeMessage,
 } from "../common/runtime-message";
-import logger from "../common/logging";
+import { log, log_error } from "../common/logging";
 
 interface TranslateData {
   id?: string;
@@ -26,7 +26,7 @@ export async function translateContent(text: string): Promise<string> {
 
   const response = await sendRuntimeMessage(message);
   if (!response.is_ok) {
-    logger.error("AI generate failed", response.error);
+    log_error("AI generate failed", response.error);
     return "";
   }
   return response.data;
@@ -95,7 +95,7 @@ export async function execTranslate(
       }
       const translatedText = await translateContent(textContent);
       if (!translatedText) {
-        console.log("No translated text.");
+        log("No translated text.");
         return;
       }
       createContainer(targetDiv, {
@@ -116,7 +116,7 @@ export async function execNotionTranslate(
     // 翻译
     const textContent = targetDiv.textContent;
     if (!textContent || !isContent(textContent)) {
-      console.log("textContent: ", textContent);
+      log("textContent: ", textContent);
       return;
     }
     if (textContent.includes("\u200D\n")) {
@@ -125,7 +125,7 @@ export async function execNotionTranslate(
     }
     const translatedText = await translateContent(textContent);
     if (!translatedText) {
-      console.log("No translated text.");
+      log("No translated text.");
       return;
     }
 

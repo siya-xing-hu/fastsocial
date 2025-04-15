@@ -2,7 +2,7 @@
  * @fileoverview 用于 chrome.runtime.sendMessage 的统一消息结构
  */
 
-import { log, warn } from "./logging";
+import { log, log_error } from "./logging";
 
 // 用于 chrome.tabs.sendMessage 的统一消息结构
 export enum TabMessageTypeEnum {
@@ -50,6 +50,6 @@ export async function sendTabMessage(tabId: number, message: TabMessage) {
     log("received tabMessage response:", response);
     return response;
   } catch (e) {
-    warn(e)
+    log_error(e)
   } 
 }
