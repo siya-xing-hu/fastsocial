@@ -2,7 +2,7 @@
  * @fileoverview 用于 chrome.runtime.sendMessage 的统一消息结构
  */
 import { log } from "./logging";
-import { ButtonConfig } from "./storage-config";
+import { ButtonConfig, TranslateChannelEnum } from "./storage-config";
 
 // 用于 chrome.runtime.sendMessage 的统一消息结构
 export enum RuntimeMessageTypeEnum {
@@ -18,7 +18,10 @@ export type RuntimeMessage =
 
 export interface TranslateRuntimeMessage {
   type: RuntimeMessageTypeEnum.TRANSLATE;
-  data: { content: string };
+  data: {
+    channel: TranslateChannelEnum;
+    content: string;
+  };
 }
 
 export interface ConfigUpdateRuntimeMessage {
@@ -36,7 +39,9 @@ export interface AIGenarateData {
 }
 
 // 用于 chrome.runtime.sendMessage 的统一响应结构
-export type RuntimeMessageResponse = OkRuntimeMessageResponse | ErrorRuntimeMessageResponse;
+export type RuntimeMessageResponse =
+  | OkRuntimeMessageResponse
+  | ErrorRuntimeMessageResponse;
 
 export interface OkRuntimeMessageResponse {
   is_ok: true;
@@ -50,7 +55,9 @@ export interface ErrorRuntimeMessageResponse {
 
 // 封装 chrome.runtime.sendMessage 统一处理
 export async function sendRuntimeMessage(message: RuntimeMessage) {
-  const response: RuntimeMessageResponse = await chrome.runtime.sendMessage(message);
+  const response: RuntimeMessageResponse = await chrome.runtime.sendMessage(
+    message,
+  );
   log("received response:", response);
   return response;
 }

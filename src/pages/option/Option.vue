@@ -44,7 +44,7 @@
             <label class="block text-sm font-medium text-gray-700 mb-2"
               >默认翻译服务</label
             >
-            <select v-model="config.basic.provider" class="form-input">
+            <select v-model="config.basic.translateProvider" class="form-input">
               <option value="google">Google 翻译</option>
               <option value="deepl">DeepL</option>
               <option value="chatgpt">ChatGPT</option>

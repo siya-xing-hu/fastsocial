@@ -1,5 +1,6 @@
-import { config } from "../common/storage-config";
+import { AIServiceEnum, config, TranslateChannelEnum } from "../common/storage-config";
 import { stringifyQueryParameter } from "./kit";
+import { execGptPrompt } from "./ai";
 
 async function googleTranslate(text: string, locale: string): Promise<string> {
   let url = import.meta.env.VITE_GOOGLE_TRANSLATOR_API + "?client=gtx&dt=t&" +
@@ -53,15 +54,28 @@ async function deeplTranslate(text: string, locale: string): Promise<string> {
   return data.translations[0].text;
 }
 
-export async function translate(text: string, locale: string): Promise<string> {
-  const provider = config.value.basic.provider;
-  
-  switch (provider) {
-    case "google":
+async function aiTranslate(channel: TranslateChannelEnum, text: string): Promise<string> {
+  const prompt = `请将以下文本翻译成${config.value.basic.targetLang}`;
+
+  if (channel === TranslateChannelEnum.CHATGPT) {
+    return await execGptPrompt(AIServiceEnum.OPENAI, prompt, text);
+  } else if (channel === TranslateChannelEnum.OLLAMA) {
+    return await execGptPrompt(AIServiceEnum.OLLAMA, prompt, text);
+  }
+
+  throw new Error(`Unsupported translation provider: ${channel}`);
+}
+
+export async function translate(channel: TranslateChannelEnum, text: string, locale: string): Promise<string> {
+  switch (channel) {
+    case TranslateChannelEnum.GOOGLE:
       return googleTranslate(text, locale);
-    case "deepl":
+    case TranslateChannelEnum.DEEPL:
       return deeplTranslate(text, locale);
+    case TranslateChannelEnum.CHATGPT:
+    case TranslateChannelEnum.OLLAMA:
+      return aiTranslate(channel, text);
     default:
-      throw new Error(`Unsupported translation provider: ${provider}`);
+      throw new Error(`Unsupported translation provider: ${channel}`);
   }
 }

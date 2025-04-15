@@ -2,6 +2,20 @@ import { ref } from "vue";
 import { debounce } from "../utils/kit";
 import { ConfigUpdateRuntimeMessage, RuntimeMessageTypeEnum, sendRuntimeMessage } from "./runtime-message";
 
+// 定义翻译渠道
+export enum TranslateChannelEnum {
+  GOOGLE = "google",
+  DEEPL = "deepl",
+  CHATGPT = "chatgpt",
+  OLLAMA = "ollama",
+}
+
+// 定义AI服务
+export enum AIServiceEnum {
+  OPENAI = "openai",
+  OLLAMA = "ollama",
+}
+
 export interface OpenAIConfig {
   apiKey: string;
   org?: string;
@@ -39,8 +53,8 @@ export interface ButtonConfigList {
 
 interface Config {
   basic: {
-    aiProvider: 'chatgpt' | 'ollama';
-    provider: 'google' | 'deepl' | 'chatgpt' | 'ollama';
+    aiProvider: AIServiceEnum;
+    translateProvider: TranslateChannelEnum;
     targetLang: string;
     autoTranslate: boolean;
   };
@@ -55,8 +69,8 @@ interface Config {
 // 默认配置
 const DEFAULT_CONFIG: Config = {
   basic: {
-    aiProvider: 'ollama',
-    provider: 'google',
+    aiProvider: AIServiceEnum.OLLAMA,
+    translateProvider: TranslateChannelEnum.OLLAMA,
     targetLang: 'zh-CN',
     autoTranslate: true
   },

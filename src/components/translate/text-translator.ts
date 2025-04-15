@@ -11,7 +11,7 @@ import {
   TranslateRuntimeMessage,
 } from "../../common/runtime-message";
 import { log, log_error } from "../../common/logging";
-
+import { config, TranslateChannelEnum } from "../../common/storage-config";
 interface TranslateData {
   id?: string;
   text: string;
@@ -25,10 +25,11 @@ const translateDataList: TranslateData[] = [];
  * @param text 要翻译的文本
  * @returns 翻译后的文本
  */
-export async function translateContent(text: string): Promise<string> {
+export async function translateContent(channel: TranslateChannelEnum, text: string): Promise<string> {
   const message: TranslateRuntimeMessage = {
     type: RuntimeMessageTypeEnum.TRANSLATE,
     data: {
+      channel: channel,
       content: text,
     },
   };
@@ -107,7 +108,7 @@ export async function execTranslate(
       if (!textContent || !isContent(textContent)) {
         return;
       }
-      const translatedText = await translateContent(textContent);
+      const translatedText = await translateContent(config.value.basic.translateProvider, textContent);
       if (!translatedText) {
         log("No translated text.");
         return;
@@ -142,7 +143,7 @@ export async function execNotionTranslate(
       targetDiv.textContent = textContent.split("\u200D\n")[0];
       return;
     }
-    const translatedText = await translateContent(textContent);
+    const translatedText = await translateContent(config.value.basic.translateProvider, textContent);
     if (!translatedText) {
       log("No translated text.");
       return;

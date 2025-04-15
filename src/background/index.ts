@@ -5,14 +5,14 @@ import {
   RuntimeMessageResponse,
   RuntimeMessageTypeEnum,
 } from "../common/runtime-message";
-import { initConfig } from "../common/storage-config";
+import { config, initConfig } from "../common/storage-config";
 import {
   ConfigUpdateTabMessage,
   sendTabMessage,
   TabMessageTypeEnum,
 } from "../common/tabs-message";
 import { retry } from "../utils/kit";
-import { execGptPrompt } from "../utils/openai";
+import { execGptPrompt } from "../utils/ai";
 import { translate } from "../utils/translate";
 import { addTabListener } from "./listener";
 
@@ -30,10 +30,15 @@ export function init() {
 
       switch (message.type) {
         case RuntimeMessageTypeEnum.TRANSLATE:
-          const text = message.data.content;
           retry(
             async () => {
-              return Promise.resolve(await translate(text, "auto"));
+              return Promise.resolve(
+                await translate(
+                  message.data.channel,
+                  message.data.content,
+                  "auto",
+                ),
+              );
             },
             1,
             5,
@@ -69,7 +74,7 @@ export function init() {
           retry(
             async () => {
               return Promise.resolve(
-                await execGptPrompt(data.button, data.content),
+                await execGptPrompt(config.value.basic.aiProvider, data.button.prompt, data.content),
               );
             },
             1,

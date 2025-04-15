@@ -4,7 +4,7 @@ import {
   RuntimeMessageTypeEnum,
   sendRuntimeMessage,
 } from "../../common/runtime-message";
-import { ButtonConfig, config } from "../../common/storage-config";
+import { ButtonConfig, config, TranslateChannelEnum } from "../../common/storage-config";
 import { isContent, setInputText } from "../../utils/kit";
 import { execObserver } from "../../utils/mutationObserver";
 import {
@@ -334,7 +334,7 @@ async function ttTwitterTranslate(): Promise<void> {
         return;
       }
       // 翻译
-      translateContent(textContent).then((translatedText) => {
+      translateContent(TranslateChannelEnum.GOOGLE, textContent).then((translatedText) => {
         span.textContent = translatedText || textContent;
       });
     });

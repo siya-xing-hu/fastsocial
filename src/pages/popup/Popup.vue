@@ -41,7 +41,7 @@
             >翻译服务:</label
           >
           <select
-            v-model="config.basic.provider"
+            v-model="config.basic.translateProvider"
             @change="onInput()"
             class="pl-3"
           >
