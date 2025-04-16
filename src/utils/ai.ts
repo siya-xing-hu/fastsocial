@@ -1,96 +1,70 @@
-import { log } from "../common/logging";
-import { AIServiceEnum, config } from "../common/storage-config";
+import { AIServiceConfig, config } from "../common/storage-config";
 
-export async function execGptPrompt(
-  channel: AIServiceEnum,
+// 获取当前启用的AI服务配置
+const getCurrentAIService = (): AIServiceConfig | null => {
+  console.log(`config.value.aiProvider, ${config.value.basic.aiProvider}, ${JSON.stringify(config.value.aiServices)}`);
+  
+  // 如果 aiServices 是对象而不是数组，将其转换为数组
+  const services = Array.isArray(config.value.aiServices) 
+    ? config.value.aiServices 
+    : Object.values(config.value.aiServices) as AIServiceConfig[];
+    
+  const currentService = services.find((service: AIServiceConfig) =>
+    service.id === config.value.basic.aiProvider
+  );
+  return currentService || null;
+};
+
+// 执行GPT提示
+export const execGptPrompt = async (
   prompt: string,
-  content: string,
-): Promise<string> {
-  const messageData = [
-    {
-      "role": "system",
-      "content": prompt
-    },
-    {
-      "role": "user",
-      "content": content
-    }
-  ];
-
-  let res;
-  if (channel === AIServiceEnum.OLLAMA) {
-    res = await ollamaCreate(messageData);
-  } else if (channel === AIServiceEnum.OPENAI) {
-   
-    res = await openaiCreate(messageData);
+  text: string,
+): Promise<string> => {
+  const service = getCurrentAIService();
+  if (!service) {
+    throw new Error("No AI service configured");
   }
 
-  return Promise.resolve(res);
-}
+  return aiCreate(prompt, text, service);
+};
 
-export async function openaiCreate(
-  messageData: any
-): Promise<any> {
-  const openai = config.value.aiService.openai;
-
-  if (!openai.apiKey) {
-    throw new Error("OpenAI API key is not configured");
+const aiCreate = async (
+  prompt: string,
+  text: string,
+  service: AIServiceConfig,
+): Promise<string> => {
+  if (!service.apiKey) {
+    throw new Error("API key is required");
   }
-
-  const reqBody = {
-    model: openai.model,
-    messages: messageData,
-  };
 
   const headers: HeadersInit = {
-    "Authorization": `Bearer ${openai.apiKey}`,
     "Content-Type": "application/json",
+    "Authorization": `Bearer ${service.apiKey}`,
   };
 
-  if (openai.org) {
-    headers["Openai-Organization"] = openai.org;
-  }
-
-  log(`openai request: ${JSON.stringify(reqBody)}`);
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch(service.endpoint, {
     method: "POST",
-    headers: headers,
-    body: JSON.stringify(reqBody),
+    headers,
+    body: JSON.stringify({
+      model: service.model,
+      messages: [
+        {
+          role: "system",
+          content: prompt,
+        },
+        {
+          role: "user",
+          content: text,
+        },
+      ],
+      temperature: 0.7,
+    }),
   });
 
-  const jsonData = await response.json();
-  log(`openai response: ${JSON.stringify(jsonData)}`);
-
-  return jsonData.choices[0].message.content;
-}
-
-export async function ollamaCreate(
-  messageData: any
-): Promise<any> {
-  const ollama = config.value.aiService.ollama;
-
-  if (!ollama.endpoint) {
-    throw new Error("Ollama endpoint is not configured");
+  if (!response.ok) {
+    throw new Error(`OpenAI API error: ${response.statusText}`);
   }
 
-  const reqBody = {
-    model: ollama.model,
-    messages: messageData,
-    stream: false
-  };
-
-
-  log(`ollama request: ${JSON.stringify(reqBody)}`);
-
-  const response = await fetch(ollama.endpoint + "/v1/chat/completions", {
-    method: "POST",
-    body: JSON.stringify(reqBody),
-  });
-
-
-  const jsonData = await response.json();
-  log(`ollama response: ${JSON.stringify(jsonData)}`);
-
-  return jsonData.choices[0].message.content;
-}
+  const data = await response.json();
+  return data.choices[0].message.content;
+};

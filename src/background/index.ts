@@ -74,7 +74,7 @@ export function init() {
           retry(
             async () => {
               return Promise.resolve(
-                await execGptPrompt(config.value.basic.aiProvider, data.button.prompt, data.content),
+                await execGptPrompt(data.button.prompt, data.content),
               );
             },
             1,

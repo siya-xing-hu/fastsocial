@@ -35,8 +35,14 @@
               >默认AI服务</label
             >
             <select v-model="config.basic.aiProvider" class="form-input">
-              <option value="chatgpt">ChatGPT</option>
-              <option value="ollama">Ollama</option>
+              <option
+                v-for="service in config.aiServices"
+                :key="service.id"
+                :value="service.id"
+                :disabled="!service.enabled"
+              >
+                {{ service.name }}
+              </option>
             </select>
           </div>
 
@@ -47,8 +53,7 @@
             <select v-model="config.basic.translateProvider" class="form-input">
               <option value="google">Google 翻译</option>
               <option value="deepl">DeepL</option>
-              <option value="chatgpt">ChatGPT</option>
-              <option value="ollama">Ollama</option>
+              <option value="ai">AI</option>
             </select>
           </div>
 
@@ -83,95 +88,197 @@
       <section v-if="currentMenu === 'ai'" class="max-w-2xl">
         <h2 class="text-xl font-medium mb-6">AI 服务配置</h2>
 
-        <!-- OpenAI 配置 -->
-        <div
-          class="mb-6 bg-white p-6 rounded-lg shadow-sm border border-gray-200"
-        >
-          <h3 class="text-lg font-medium mb-4">OpenAI</h3>
-          <div class="space-y-4">
-            <div class="config-item">
-              <label class="block text-sm font-medium text-gray-700 mb-2"
-                >API Key</label
-              >
-              <input
-                type="password"
-                v-model="config.aiService.openai.apiKey"
-                class="form-input"
-              />
-            </div>
-            <div class="config-item">
-              <label class="block text-sm font-medium text-gray-700 mb-2"
-                >组织 ID</label
-              >
-              <input
-                type="text"
-                v-model="config.aiService.openai.org"
-                class="form-input"
-              />
-            </div>
-            <div class="config-item">
-              <label class="block text-sm font-medium text-gray-700 mb-2"
-                >模型</label
-              >
-              <select
-                v-model="config.aiService.openai.model"
-                class="form-input"
-              >
-                <option value="gpt-3.5-turbo">GPT-3.5</option>
-                <option value="gpt-4">GPT-4</option>
-              </select>
-            </div>
+        <!-- AI 服务列表 -->
+        <div class="mb-6">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-medium">已配置的服务</h3>
+            <button
+              @click="showAddService = true"
+              class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              添加服务
+            </button>
           </div>
-        </div>
 
-        <!-- Ollama 配置 -->
-        <div
-          class="mb-6 bg-white p-6 rounded-lg shadow-sm border border-gray-200"
-        >
-          <h3 class="text-lg font-medium mb-4">Ollama</h3>
+          <!-- 服务列表 -->
           <div class="space-y-4">
-            <div class="config-item">
-              <label class="block text-sm font-medium text-gray-700 mb-2"
-                >服务地址</label
-              >
-              <input
-                type="text"
-                v-model="config.aiService.ollama.endpoint"
-                class="form-input"
-              />
-            </div>
-            <div class="config-item">
-              <label class="block text-sm font-medium text-gray-700 mb-2"
-                >模型</label
-              >
-              <div class="flex gap-2">
-                <select
-                  v-model="config.aiService.ollama.model"
-                  class="form-input flex-1"
-                >
-                  <!-- 默认模型列表 -->
-                  <option value="llama3">Llama 3</option>
-                  <!-- 用户自定义模型 -->
-                  <option disabled>──────────</option>
-                  <option
-                    v-for="model in config.aiService.ollama.customModels"
-                    :key="model"
-                    :value="model"
+            <div
+              v-for="service in config.aiServices"
+              :key="service.id"
+              class="bg-white p-6 rounded-lg shadow-sm border border-gray-200"
+              :class="{ 'border-blue-500': service.id === config.basic.aiProvider }"
+            >
+              <div class="flex justify-between items-start mb-4">
+                <div>
+                  <h4 class="text-lg font-medium">{{ service.name }}</h4>
+                </div>
+                <div class="flex items-center gap-2">
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      v-model="service.enabled"
+                      class="sr-only peer"
+                    />
+                    <div
+                      class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"
+                    ></div>
+                  </label>
+                  <button
+                    @click="removeService(service.id)"
+                    class="p-2 text-gray-500 hover:text-red-600 transition-colors"
                   >
-                    {{ model }}
-                  </option>
-                </select>
-                <button
-                  @click="showAddModel = true"
-                  class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-600 transition-colors"
-                >
-                  添加模型
-                </button>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- 服务配置表单 -->
+              <div class="space-y-4">
+                <div class="config-item">
+                  <label class="block text-sm font-medium text-gray-700 mb-2">服务地址</label>
+                  <input
+                    type="text"
+                    v-model="service.endpoint"
+                    class="form-input"
+                    placeholder="请输入服务地址"
+                    @input="updateService(service)"
+                  />
+                </div>
+
+                <div class="config-item">
+                  <label class="block text-sm font-medium text-gray-700 mb-2">API Key</label>
+                  <input
+                    type="password"
+                    v-model="service.apiKey"
+                    class="form-input"
+                    placeholder="请输入 API Key"
+                    @input="updateService(service)"
+                  />
+                </div>
+
+                <div class="config-item">
+                  <label class="block text-sm font-medium text-gray-700 mb-2">模型</label>
+                  <div class="flex gap-2">
+                    <select
+                      v-model="service.model"
+                      class="form-input flex-1"
+                      @change="updateService(service)"
+                    >
+                      <option v-for="model in service.customModels" :key="model" :value="model">
+                        {{ model }}
+                      </option>
+                    </select>
+                    <button
+                      @click="showAddModel = true; currentService = service"
+                      class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-600 transition-colors"
+                    >
+                      添加模型
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
+      </section>
 
+      <!-- 添加服务对话框 -->
+      <div
+        v-if="showAddService"
+        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+      >
+        <div class="bg-white rounded-lg p-6 w-[400px]">
+          <h3 class="text-lg font-medium mb-4">添加 AI 服务</h3>
+          <div class="space-y-4">
+            <div class="config-item">
+              <label class="block text-sm font-medium text-gray-700 mb-2">服务名称</label>
+              <input
+                type="text"
+                v-model="newService.name"
+                class="form-input"
+                placeholder="请输入服务名称"
+              />
+            </div>
+            <div class="config-item">
+              <label class="block text-sm font-medium text-gray-700 mb-2">服务地址</label>
+              <input
+                type="text"
+                v-model="newService.endpoint"
+                class="form-input"
+                placeholder="请输入服务地址"
+              />
+            </div>
+            <div class="config-item">
+              <label class="block text-sm font-medium text-gray-700 mb-2">API Key</label>
+              <input
+                type="password"
+                v-model="newService.apiKey"
+                class="form-input"
+                placeholder="请输入 API Key"
+              />
+            </div>
+            <div class="config-item">
+              <label class="block text-sm font-medium text-gray-700 mb-2">默认模型</label>
+              <input
+                type="text"
+                v-model="newService.model"
+                class="form-input"
+                placeholder="请输入默认模型名称"
+              />
+            </div>
+          </div>
+          <div class="flex justify-end gap-2 mt-6">
+            <button
+              @click="showAddService = false"
+              class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+            >
+              取消
+            </button>
+            <button
+              @click="addService"
+              class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              确定
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 添加模型对话框 -->
+      <div
+        v-if="showAddModel"
+        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+      >
+        <div class="bg-white rounded-lg p-6 w-[400px]">
+          <h3 class="text-lg font-medium mb-4">添加自定义模型</h3>
+          <input
+            type="text"
+            v-model="newModelName"
+            placeholder="请输入模型名称"
+            class="form-input mb-4"
+          />
+          <div class="flex justify-end gap-2">
+            <button
+              @click="showAddModel = false"
+              class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+            >
+              取消
+            </button>
+            <button
+              @click="addCustomModel"
+              class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              确定
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 翻译服务配置 -->
+      <section v-if="currentMenu === 'translate'" class="max-w-2xl">
+        <h2 class="text-xl font-medium mb-6">翻译服务配置</h2>
         <!-- DeepL 配置 -->
         <div
           class="mb-6 bg-white p-6 rounded-lg shadow-sm border border-gray-200"
@@ -184,7 +291,7 @@
               >
               <input
                 type="password"
-                v-model="config.aiService.deepl.apiKey"
+                v-model="config.translationService.deepl.apiKey"
                 class="form-input"
               />
               <p class="mt-1 text-sm text-gray-500">
@@ -272,41 +379,12 @@
       </div>
     </main>
   </div>
-
-  <!-- 添加模型对话框 -->
-  <div
-    v-if="showAddModel"
-    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
-  >
-    <div class="bg-white rounded-lg p-6 w-[400px]">
-      <h3 class="text-lg font-medium mb-4">添加自定义模型</h3>
-      <input
-        type="text"
-        v-model="newModelName"
-        placeholder="请输入模型名称"
-        class="form-input mb-4"
-      />
-      <div class="flex justify-end gap-2">
-        <button
-          @click="showAddModel = false"
-          class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-        >
-          取消
-        </button>
-        <button
-          @click="addCustomModel"
-          class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-        >
-          确定
-        </button>
-      </div>
-    </div>
-  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { config, initConfig, onInput } from "../../common/storage-config";
+import { type AIServiceConfig } from "../../common/storage-config";
 import type { ButtonConfig as ButtonConfigType } from "../../common/storage-config";
 import ButtonConfig from "../../components/ui/ButtonConfig.vue";
 import { log_error } from "../../common/logging";
@@ -315,12 +393,96 @@ import { log_error } from "../../common/logging";
 const menuItems = computed(() => [
   { key: "basic", label: "基础配置" },
   { key: "ai", label: "AI 服务" },
+  { key: "translate", label: "翻译服务" },
   { key: "buttons", label: "按钮配置" },
 ]);
 
 const currentMenu = ref("basic");
+const showAddService = ref(false);
 const showAddModel = ref(false);
 const newModelName = ref("");
+const currentService = ref<AIServiceConfig | null>(null);
+
+// 新服务配置
+const newService = ref<Partial<AIServiceConfig>>({
+  name: "",
+  endpoint: "",
+  apiKey: "",
+  model: "",
+  customModels: [],
+  enabled: true
+});
+
+// 优化添加服务方法
+const addService = () => {
+  if (!newService.value.name || !newService.value.endpoint) {
+    return;
+  }
+
+  const service: AIServiceConfig = {
+    id: `custom-${Date.now()}`,
+    name: newService.value.name,
+    endpoint: newService.value.endpoint,
+    apiKey: newService.value.apiKey || "",
+    model: newService.value.model || "",
+    customModels: [newService.value.model || ""],
+    enabled: true
+  };
+
+  config.value.aiServices.push(service);
+  showAddService.value = false;
+  newService.value = {
+    name: "",
+    endpoint: "",
+    apiKey: "",
+    model: "",
+    customModels: [],
+    enabled: true
+  };
+};
+
+// 优化移除服务方法
+const removeService = (id: string) => {
+  const index = config.value.aiServices.findIndex(service => service.id === id);
+  if (index > -1) {
+    // 如果删除的是当前选中的服务，切换到第一个可用的服务
+    if (id === config.value.basic.aiProvider) {
+      const firstEnabled = config.value.aiServices.find(service => service.enabled && service.id !== id);
+      if (firstEnabled) {
+        config.value.basic.aiProvider = firstEnabled.id;
+      }
+    }
+    config.value.aiServices.splice(index, 1);
+  }
+};
+
+// 添加新的方法：更新服务配置
+const updateService = (service: AIServiceConfig) => {
+  const index = config.value.aiServices.findIndex(s => s.id === service.id);
+  if (index !== -1) {
+    config.value.aiServices[index] = { ...service };
+  }
+};
+
+// 添加自定义模型
+const addCustomModel = () => {
+  if (!newModelName.value.trim() || !currentService.value) {
+    return;
+  }
+
+  if (!currentService.value.customModels) {
+    currentService.value.customModels = [];
+  }
+
+  if (currentService.value.customModels.includes(newModelName.value)) {
+    return;
+  }
+
+  currentService.value.customModels.push(newModelName.value);
+  newModelName.value = "";
+  showAddModel.value = false;
+  currentService.value = null;
+};
 
 // 优化保存配置方法
 const saveConfig = async () => {
@@ -331,27 +493,6 @@ const saveConfig = async () => {
     log_error("保存配置失败:", error);
     // 可以添加保存失败的提示
   }
-};
-
-// 优化添加自定义模型方法
-const addCustomModel = () => {
-  if (!newModelName.value.trim()) {
-    return;
-  }
-
-  if (!config.value.aiService.ollama.customModels) {
-    config.value.aiService.ollama.customModels = [];
-  }
-
-  // 检查是否已存在相同名称的模型
-  if (config.value.aiService.ollama.customModels.includes(newModelName.value)) {
-    // 可以添加提示：模型已存在
-    return;
-  }
-
-  config.value.aiService.ollama.customModels.push(newModelName.value);
-  newModelName.value = "";
-  showAddModel.value = false;
 };
 
 // 优化按钮操作方法
@@ -419,8 +560,14 @@ const updateButtons = (
 onMounted(async () => {
   try {
     await initConfig();
+    // 确保 aiServices 是数组
+    if (!Array.isArray(config.value.aiServices)) {
+      config.value.aiServices = [];
+    }
   } catch (error) {
     log_error("初始化配置失败:", error);
+    // 确保即使初始化失败也有默认值
+    config.value.aiServices = [];
   }
 });
 </script>
@@ -429,5 +576,17 @@ onMounted(async () => {
 <style>
 .form-input {
   @apply w-full rounded-md border-gray-300 bg-gray-50 shadow-sm text-base py-2.5 focus:border-blue-500 focus:ring-blue-500 focus:bg-white transition-colors;
+}
+
+.config-item {
+  @apply space-y-2;
+}
+
+.service-item {
+  @apply transition-all duration-200;
+}
+
+.service-item:hover {
+  @apply shadow-md;
 }
 </style>

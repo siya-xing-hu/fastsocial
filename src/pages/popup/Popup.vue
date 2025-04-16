@@ -29,8 +29,14 @@
             @change="onInput()"
             class="pl-3"
           >
-            <option value="chatgpt">ChatGPT</option>
-            <option value="ollama">Ollama</option>
+            <option
+              v-for="service in (config.aiServices)"
+              :key="service.id"
+              :value="service.id"
+              :disabled="!service.enabled"
+            >
+              {{ service.name }}
+            </option>
           </select>
         </div>
       </div>
@@ -47,8 +53,7 @@
           >
             <option value="google">Google</option>
             <option value="deepl">DeepL</option>
-            <option value="chatgpt">ChatGPT</option>
-            <option value="ollama">Ollama</option>
+            <option value="ai">AI</option>
           </select>
         </div>
       </div>
