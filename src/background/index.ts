@@ -41,7 +41,7 @@ export function init() {
               );
             },
             1,
-            5,
+            3,
           ).then((resp) => {
             sendResponse({ is_ok: true, data: resp });
           }).catch((error) => {
@@ -78,7 +78,7 @@ export function init() {
               );
             },
             1,
-            5,
+            3,
           ).then((resp) => {
             sendResponse({ is_ok: true, data: resp });
           }).catch((error) => {

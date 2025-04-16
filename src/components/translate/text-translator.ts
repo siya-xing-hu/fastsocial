@@ -170,23 +170,23 @@ function findNearestDivAndText(
 
   let targetDiv: HTMLElement | null = null;
 
-  // Traverse parent chain to find the nearest bottom-level div
+  // 遍历父元素链查找最近的 div
   if (targetElement) {
     for (
       let element: HTMLElement | null = targetElement;
       element;
       element = element.parentElement
     ) {
-      // 如果是 div 元素、 H 元素、span 元素、p 元素、a 元素
-      if (
-        element.tagName === "DIV" || element.tagName.match(/H\d/) ||
-        element.tagName === "SPAN" || element.tagName === "P" ||
-        element.tagName === "A"
-      ) {
-        targetDiv = element as HTMLElement;
+      if (element.tagName === 'DIV') {
+        targetDiv = element;
         break;
       }
     }
+  }
+
+  // 如果 targetDiv 不为空，但是时我新增的元素，则返回 null
+  if (targetDiv && targetDiv.getAttribute("text-is-translate-text")) {
+    return null;
   }
 
   return targetDiv;
@@ -208,7 +208,6 @@ function createContainer(
   }
 
   const div = document.createElement("div");
-
   div.setAttribute("text-is-translate-text", translateData.id);
   div.style.textOverflow = "unset";
 
@@ -217,14 +216,7 @@ function createContainer(
   });
   app.mount(div);
 
-  // 获取 tweetWrapper 的父元素
-  const parentElement = targetDiv.parentNode;
-  // 确保存在父元素
-  if (parentElement) {
-    // 将新创建的容器添加到父元素中
-    parentElement.insertBefore(div, targetDiv.nextSibling);
-  } else {
-    targetDiv.appendChild(div);
-  }
+  // 将翻译元素插入到目标元素后面
+  targetDiv.parentNode?.insertBefore(div, targetDiv.nextSibling);
   targetDiv.setAttribute("text-is-translated", translateData.id);
 } 

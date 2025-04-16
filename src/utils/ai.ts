@@ -6,34 +6,30 @@ export async function execGptPrompt(
   prompt: string,
   content: string,
 ): Promise<string> {
+  const messageData = [
+    {
+      "role": "system",
+      "content": prompt
+    },
+    {
+      "role": "user",
+      "content": content
+    }
+  ];
 
   let res;
   if (channel === AIServiceEnum.OLLAMA) {
-    res = await ollamaCreate(
-      `${prompt}: "${content}", JSON 格式输出，输出格式： {"result": ""}`
-    );
+    res = await ollamaCreate(messageData);
   } else if (channel === AIServiceEnum.OPENAI) {
-    const messageData = [
-      {
-        "role": "system",
-        "content": prompt
-      },
-      {
-        "role": "user",
-        "content": content
-      }
-    ];
+   
     res = await openaiCreate(messageData);
   }
 
-  const result_json = JSON.parse(res);
-
-  return Promise.resolve(result_json.result);
+  return Promise.resolve(res);
 }
 
 export async function openaiCreate(
-  messageData: any,
-  jsonFormat: boolean = true,
+  messageData: any
 ): Promise<any> {
   const openai = config.value.aiService.openai;
 
@@ -44,7 +40,6 @@ export async function openaiCreate(
   const reqBody = {
     model: openai.model,
     messages: messageData,
-    response_format: jsonFormat ? { type: "json_object" } : {},
   };
 
   const headers: HeadersInit = {
@@ -71,8 +66,7 @@ export async function openaiCreate(
 }
 
 export async function ollamaCreate(
-  messageData: string,
-  jsonFormat: boolean = true,
+  messageData: any
 ): Promise<any> {
   const ollama = config.value.aiService.ollama;
 
@@ -82,14 +76,14 @@ export async function ollamaCreate(
 
   const reqBody = {
     model: ollama.model,
-    prompt: messageData,
-    format: jsonFormat ? "json": "",
+    messages: messageData,
     stream: false
   };
 
+
   log(`ollama request: ${JSON.stringify(reqBody)}`);
 
-  const response = await fetch(ollama.endpoint + "/api/generate", {
+  const response = await fetch(ollama.endpoint + "/v1/chat/completions", {
     method: "POST",
     body: JSON.stringify(reqBody),
   });
@@ -98,5 +92,5 @@ export async function ollamaCreate(
   const jsonData = await response.json();
   log(`ollama response: ${JSON.stringify(jsonData)}`);
 
-  return jsonData.response;
+  return jsonData.choices[0].message.content;
 }
