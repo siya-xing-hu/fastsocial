@@ -9,8 +9,9 @@ import {
   config,
   TranslateChannelEnum,
 } from "../../common/storage-config";
-import { isContent, setInputText } from "../../utils/kit";
+import { setInputText } from "../../utils/kit";
 import { execObserver } from "../../utils/mutationObserver";
+import { translateContent } from "../translate/text-translator";
 import {
   buttonList,
   ButtonLocationEnum,
@@ -18,7 +19,6 @@ import {
   HandlerParams,
 } from "../ui/button";
 import { createDialogContainer } from "../ui/dialog";
-import { translateContent } from "../translate/text-translator";
 
 enum XUrlEnum {
   HOME = "/home",
@@ -59,18 +59,27 @@ const translateCache: Map<string, TranslateCache> = new Map();
 // 创建翻译提示框
 function createTranslateTooltip(): HTMLElement {
   const tooltip = document.createElement("div");
-  tooltip.className =
-    "translate-tooltip fixed z-50 rounded-lg shadow-lg p-3 max-w-sm";
-  // 添加深色主题支持
+  tooltip.className = "translate-tooltip fixed z-50";
   tooltip.style.cssText = `
     display: none;
     left: 0;
     top: 0;
-    background-color: var(--background-color, #ffffff);
-    color: var(--text-color, #000000);
-    border: 1px solid var(--border-color, #e5e7eb);
   `;
   document.body.appendChild(tooltip);
+  
+  // 创建一个简单的DOM结构，使用固定的白底黑字样式，不受页面主题影响
+  tooltip.innerHTML = `
+    <div style="background-color: #ffffff; color: #000000; border-radius: 0.5rem; padding: 0.75rem; margin: 0.5rem 0; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);">
+      <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <svg xmlns="http://www.w3.org/2000/svg" style="height: 1rem; width: 1rem; color: #4b5563;" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M7 2a1 1 0 011 1v1h3a1 1 0 110 2H9.578a18.87 18.87 0 01-1.724 4.78c.29.354.596.696.914 1.026a1 1 0 11-1.44 1.389 21.034 21.034 0 01-.554-.6 19.098 19.098 0 01-3.107 3.567 1 1 0 01-1.334-1.49 17.087 17.087 0 003.13-3.733 18.992 18.992 0 01-1.487-2.494 1 1 0 111.79-.89c.234.47.489.928.764 1.372.417-.934.752-1.913.997-2.927H3a1 1 0 110-2h3V3a1 1 0 011-1zm6 6a1 1 0 01.894.553l2.991 5.982a.869.869 0 01.02.037l.99 1.98a1 1 0 11-1.79.895L15.383 16h-4.764l-.724 1.447a1 1 0 11-1.788-.894l.99-1.98.019-.038 2.99-5.982A1 1 0 0113 8zm-1.382 6h2.764L13 11.236 11.618 14z" clip-rule="evenodd" />
+        </svg>
+        <span style="font-size: 0.75rem; color: #4b5563;">翻译结果</span>
+      </div>
+      <span style="display: block; white-space: pre-wrap; line-height: 1.625; font-size: 0.875rem; color: #1f2937;" class="translate-content"></span>
+    </div>
+  `;
+  
   return tooltip;
 }
 
@@ -81,7 +90,14 @@ function showTranslateTooltip(
   x: number,
   y: number,
 ) {
-  tooltip.textContent = text;
+  console.log("显示翻译提示框:", text);
+
+  // 直接更新内容
+  const contentElement = tooltip.querySelector(".translate-content");
+  if (contentElement) {
+    contentElement.textContent = text;
+  }
+
   tooltip.style.display = "block";
   tooltip.style.left = `${x}px`;
   tooltip.style.top = `${y}px`;
