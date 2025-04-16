@@ -1,15 +1,9 @@
+import { log_info } from "../common/logging";
 import { AIServiceConfig, config } from "../common/storage-config";
 
 // 获取当前启用的AI服务配置
 const getCurrentAIService = (): AIServiceConfig | null => {
-  console.log(`config.value.aiProvider, ${config.value.basic.aiProvider}, ${JSON.stringify(config.value.aiServices)}`);
-  
-  // 如果 aiServices 是对象而不是数组，将其转换为数组
-  const services = Array.isArray(config.value.aiServices) 
-    ? config.value.aiServices 
-    : Object.values(config.value.aiServices) as AIServiceConfig[];
-    
-  const currentService = services.find((service: AIServiceConfig) =>
+  const currentService = config.value.aiServices.find((service: AIServiceConfig) =>
     service.id === config.value.basic.aiProvider
   );
   return currentService || null;
@@ -41,6 +35,8 @@ const aiCreate = async (
     "Content-Type": "application/json",
     "Authorization": `Bearer ${service.apiKey}`,
   };
+
+  log_info(`aiCreate, ${service.endpoint}, ${service.model}, ${prompt}, ${text}`);
 
   const response = await fetch(service.endpoint, {
     method: "POST",

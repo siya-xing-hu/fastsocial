@@ -49,6 +49,7 @@ interface Config {
     translateProvider: TranslateChannelEnum;
     targetLang: string;
     autoTranslate: boolean;
+    translatePrompt: string; // 添加翻译 prompt 配置
   };
   aiServices: AIServiceConfig[];
   translationService: {
@@ -66,6 +67,7 @@ const DEFAULT_CONFIG: Config = {
     translateProvider: TranslateChannelEnum.AI,
     targetLang: "zh-CN",
     autoTranslate: true,
+    translatePrompt: "", // 添加默认翻译 prompt
   },
   aiServices: [
     {
@@ -141,16 +143,15 @@ export const config = ref<Config>(DEFAULT_CONFIG);
 // 修改初始化函数
 export async function initConfig() {
   const storage = await chrome.storage.local.get();
-  const storedConfig = storage["config"];
+  const storedConfig = storage["fast-social-config"];
 
   if (storedConfig) {
-    // 将存储的配置与默认配置进行深度合并
-    config.value = storedConfig;
+    config.value = JSON.parse(storedConfig);
   }
 }
 
 export const onInput = debounce(async () => {
-  await chrome.storage.local.set({ ["config"]: config.value });
+  await chrome.storage.local.set({ ["fast-social-config"]: JSON.stringify(config.value) });
 
   const message: ConfigUpdateRuntimeMessage = {
     type: RuntimeMessageTypeEnum.CONFIG_UPDATE,

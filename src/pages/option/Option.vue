@@ -124,7 +124,7 @@
                     ></div>
                   </label>
                   <button
-                    @click="removeService(service.id)"
+                    @click="removeService(service)"
                     class="p-2 text-gray-500 hover:text-red-600 transition-colors"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -160,22 +160,42 @@
 
                 <div class="config-item">
                   <label class="block text-sm font-medium text-gray-700 mb-2">模型</label>
-                  <div class="flex gap-2">
-                    <select
-                      v-model="service.model"
-                      class="form-input flex-1"
-                      @change="updateService(service)"
-                    >
-                      <option v-for="model in service.customModels" :key="model" :value="model">
-                        {{ model }}
-                      </option>
-                    </select>
-                    <button
-                      @click="showAddModel = true; currentService = service"
-                      class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-600 transition-colors"
-                    >
-                      添加模型
-                    </button>
+                  <div class="space-y-2">
+                    <div class="flex gap-2">
+                      <select
+                        v-model="service.model"
+                        class="form-input flex-1"
+                        @change="updateService(service)"
+                      >
+                        <option v-for="model in service.customModels" :key="model" :value="model">
+                          {{ model }}
+                        </option>
+                      </select>
+                      <button
+                        @click="showAddModel = true; currentService = service"
+                        class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-600 transition-colors"
+                      >
+                        添加模型
+                      </button>
+                    </div>
+                    <!-- 模型列表 -->
+                    <div class="flex flex-wrap gap-2 mt-2">
+                      <div
+                        v-for="model in service.customModels"
+                        :key="model"
+                        class="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-md text-sm"
+                      >
+                        <span>{{ model }}</span>
+                        <button
+                          @click="removeModel(service, model)"
+                          class="text-gray-500 hover:text-red-600 transition-colors"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -246,6 +266,31 @@
         </div>
       </div>
 
+      <!-- 删除服务确认对话框 -->
+      <div
+        v-if="showDeleteServiceConfirm"
+        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+      >
+        <div class="bg-white rounded-lg p-6 w-[400px]">
+          <h3 class="text-lg font-medium mb-4">确认删除服务</h3>
+          <p class="text-gray-600 mb-6">确定要删除服务 "{{ serviceToDelete?.name }}" 吗？此操作不可恢复。</p>
+          <div class="flex justify-end gap-2">
+            <button
+              @click="showDeleteServiceConfirm = false"
+              class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+            >
+              取消
+            </button>
+            <button
+              @click="confirmDeleteService"
+              class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+            >
+              删除
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- 添加模型对话框 -->
       <div
         v-if="showAddModel"
@@ -279,6 +324,25 @@
       <!-- 翻译服务配置 -->
       <section v-if="currentMenu === 'translate'" class="max-w-2xl">
         <h2 class="text-xl font-medium mb-6">翻译服务配置</h2>
+        
+        <!-- 翻译 Prompt 配置 -->
+        <div class="mb-6 bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <h3 class="text-lg font-medium mb-4">翻译提示词配置</h3>
+          <div class="space-y-4">
+            <div class="config-item">
+              <label class="block text-sm font-medium text-gray-700 mb-2">翻译提示词</label>
+              <textarea
+                v-model="config.basic.translatePrompt"
+                class="form-input min-h-[100px]"
+                placeholder="请输入翻译提示词，可以使用 ${targetLang} 变量表示目标语言"
+              ></textarea>
+              <p class="mt-1 text-sm text-gray-500">
+                提示：可以使用 ${targetLang} 变量来表示目标语言，例如：请将以下文本翻译成${targetLang}
+              </p>
+            </div>
+          </div>
+        </div>
+
         <!-- DeepL 配置 -->
         <div
           class="mb-6 bg-white p-6 rounded-lg shadow-sm border border-gray-200"
@@ -402,6 +466,8 @@ const showAddService = ref(false);
 const showAddModel = ref(false);
 const newModelName = ref("");
 const currentService = ref<AIServiceConfig | null>(null);
+const showDeleteServiceConfirm = ref(false);
+const serviceToDelete = ref<AIServiceConfig | null>(null);
 
 // 新服务配置
 const newService = ref<Partial<AIServiceConfig>>({
@@ -442,17 +508,42 @@ const addService = () => {
 };
 
 // 优化移除服务方法
-const removeService = (id: string) => {
-  const index = config.value.aiServices.findIndex(service => service.id === id);
+const removeService = (service: AIServiceConfig) => {
+  serviceToDelete.value = service;
+  showDeleteServiceConfirm.value = true;
+};
+
+// 确认删除服务
+const confirmDeleteService = () => {
+  if (!serviceToDelete.value) return;
+  
+  const index = config.value.aiServices.findIndex(s => s.id === serviceToDelete.value?.id);
   if (index > -1) {
     // 如果删除的是当前选中的服务，切换到第一个可用的服务
-    if (id === config.value.basic.aiProvider) {
-      const firstEnabled = config.value.aiServices.find(service => service.enabled && service.id !== id);
+    if (serviceToDelete.value.id === config.value.basic.aiProvider) {
+      const firstEnabled = config.value.aiServices.find(s => s.enabled && s.id !== serviceToDelete.value?.id);
       if (firstEnabled) {
         config.value.basic.aiProvider = firstEnabled.id;
       }
     }
     config.value.aiServices.splice(index, 1);
+  }
+  
+  showDeleteServiceConfirm.value = false;
+  serviceToDelete.value = null;
+};
+
+// 删除模型
+const removeModel = (service: AIServiceConfig, model: string) => {
+  if (!service.customModels) return;
+  
+  const index = service.customModels.indexOf(model);
+  if (index > -1) {
+    service.customModels.splice(index, 1);
+    // 如果删除的是当前选中的模型，切换到第一个可用的模型
+    if (model === service.model && service.customModels.length > 0) {
+      service.model = service.customModels[0];
+    }
   }
 };
 
