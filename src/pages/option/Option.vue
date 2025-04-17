@@ -52,8 +52,8 @@
             >
             <select v-model="config.basic.translateProvider" class="form-input">
               <option value="google">Google 翻译</option>
-              <option value="deepl">DeepL</option>
               <option value="ai">AI</option>
+              <option value="deepl">DeepL</option>
             </select>
           </div>
 
@@ -106,14 +106,18 @@
               v-for="service in config.aiServices"
               :key="service.id"
               class="bg-white p-6 rounded-lg shadow-sm border border-gray-200"
-              :class="{ 'border-blue-500': service.id === config.basic.aiProvider }"
+              :class="{
+                'border-blue-500': service.id === config.basic.aiProvider,
+              }"
             >
               <div class="flex justify-between items-start mb-4">
                 <div>
                   <h4 class="text-lg font-medium">{{ service.name }}</h4>
                 </div>
                 <div class="flex items-center gap-2">
-                  <label class="relative inline-flex items-center cursor-pointer">
+                  <label
+                    class="relative inline-flex items-center cursor-pointer"
+                  >
                     <input
                       type="checkbox"
                       v-model="service.enabled"
@@ -127,8 +131,17 @@
                     @click="removeService(service)"
                     class="p-2 text-gray-500 hover:text-red-600 transition-colors"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-5 w-5"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
+                        clip-rule="evenodd"
+                      />
                     </svg>
                   </button>
                 </div>
@@ -137,7 +150,9 @@
               <!-- 服务配置表单 -->
               <div class="space-y-4">
                 <div class="config-item">
-                  <label class="block text-sm font-medium text-gray-700 mb-2">服务地址</label>
+                  <label class="block text-sm font-medium text-gray-700 mb-2"
+                    >服务地址</label
+                  >
                   <input
                     type="text"
                     v-model="service.endpoint"
@@ -148,7 +163,9 @@
                 </div>
 
                 <div class="config-item">
-                  <label class="block text-sm font-medium text-gray-700 mb-2">API Key</label>
+                  <label class="block text-sm font-medium text-gray-700 mb-2"
+                    >API Key</label
+                  >
                   <input
                     type="password"
                     v-model="service.apiKey"
@@ -159,7 +176,9 @@
                 </div>
 
                 <div class="config-item">
-                  <label class="block text-sm font-medium text-gray-700 mb-2">模型</label>
+                  <label class="block text-sm font-medium text-gray-700 mb-2"
+                    >模型</label
+                  >
                   <div class="space-y-2">
                     <div class="flex gap-2">
                       <select
@@ -167,12 +186,19 @@
                         class="form-input flex-1"
                         @change="updateService(service)"
                       >
-                        <option v-for="model in service.customModels" :key="model" :value="model">
+                        <option
+                          v-for="model in service.customModels"
+                          :key="model"
+                          :value="model"
+                        >
                           {{ model }}
                         </option>
                       </select>
                       <button
-                        @click="showAddModel = true; currentService = service"
+                        @click="
+                          showAddModel = true;
+                          currentService = service;
+                        "
                         class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-600 transition-colors"
                       >
                         添加模型
@@ -190,8 +216,17 @@
                           @click="removeModel(service, model)"
                           class="text-gray-500 hover:text-red-600 transition-colors"
                         >
-                          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-4 w-4"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path
+                              fill-rule="evenodd"
+                              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                              clip-rule="evenodd"
+                            />
                           </svg>
                         </button>
                       </div>
@@ -213,7 +248,9 @@
           <h3 class="text-lg font-medium mb-4">添加 AI 服务</h3>
           <div class="space-y-4">
             <div class="config-item">
-              <label class="block text-sm font-medium text-gray-700 mb-2">服务名称</label>
+              <label class="block text-sm font-medium text-gray-700 mb-2"
+                >服务名称</label
+              >
               <input
                 type="text"
                 v-model="newService.name"
@@ -222,7 +259,9 @@
               />
             </div>
             <div class="config-item">
-              <label class="block text-sm font-medium text-gray-700 mb-2">服务地址</label>
+              <label class="block text-sm font-medium text-gray-700 mb-2"
+                >服务地址</label
+              >
               <input
                 type="text"
                 v-model="newService.endpoint"
@@ -231,7 +270,9 @@
               />
             </div>
             <div class="config-item">
-              <label class="block text-sm font-medium text-gray-700 mb-2">API Key</label>
+              <label class="block text-sm font-medium text-gray-700 mb-2"
+                >API Key</label
+              >
               <input
                 type="password"
                 v-model="newService.apiKey"
@@ -240,7 +281,9 @@
               />
             </div>
             <div class="config-item">
-              <label class="block text-sm font-medium text-gray-700 mb-2">默认模型</label>
+              <label class="block text-sm font-medium text-gray-700 mb-2"
+                >默认模型</label
+              >
               <input
                 type="text"
                 v-model="newService.model"
@@ -266,23 +309,30 @@
         </div>
       </div>
 
-      <!-- 删除服务确认对话框 -->
+      <!-- 删除确认对话框 -->
       <div
-        v-if="showDeleteServiceConfirm"
+        v-if="showDeleteConfirm"
         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
       >
         <div class="bg-white rounded-lg p-6 w-[400px]">
-          <h3 class="text-lg font-medium mb-4">确认删除服务</h3>
-          <p class="text-gray-600 mb-6">确定要删除服务 "{{ serviceToDelete?.name }}" 吗？此操作不可恢复。</p>
+          <h3 class="text-lg font-medium mb-4">
+            确认删除{{ itemToDelete?.type === "service" ? "服务" : "按钮" }}
+          </h3>
+          <p class="text-gray-600 mb-6">
+            确定要删除{{
+              itemToDelete?.type === "service" ? "服务" : "按钮"
+            }}
+            "{{ itemToDelete?.item.name }}" 吗？此操作不可恢复。
+          </p>
           <div class="flex justify-end gap-2">
             <button
-              @click="showDeleteServiceConfirm = false"
+              @click="showDeleteConfirm = false"
               class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
             >
               取消
             </button>
             <button
-              @click="confirmDeleteService"
+              @click="confirmDelete"
               class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
             >
               删除
@@ -324,20 +374,25 @@
       <!-- 翻译服务配置 -->
       <section v-if="currentMenu === 'translate'" class="max-w-2xl">
         <h2 class="text-xl font-medium mb-6">翻译服务配置</h2>
-        
+
         <!-- 翻译 Prompt 配置 -->
-        <div class="mb-6 bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        <div
+          class="mb-6 bg-white p-6 rounded-lg shadow-sm border border-gray-200"
+        >
           <h3 class="text-lg font-medium mb-4">翻译提示词配置</h3>
           <div class="space-y-4">
             <div class="config-item">
-              <label class="block text-sm font-medium text-gray-700 mb-2">翻译提示词</label>
+              <label class="block text-sm font-medium text-gray-700 mb-2"
+                >翻译提示词</label
+              >
               <textarea
-                v-model="config.basic.translatePrompt"
+                v-model="config.translationService.translatePrompt"
                 class="form-input min-h-[100px]"
                 placeholder="请输入翻译提示词，可以使用 ${targetLang} 变量表示目标语言"
               ></textarea>
               <p class="mt-1 text-sm text-gray-500">
-                提示：可以使用 ${targetLang} 变量来表示目标语言，例如：请将以下文本翻译成${targetLang}
+                提示：可以使用 ${targetLang}
+                变量来表示目标语言，例如：请将以下文本翻译成${targetLang}
               </p>
             </div>
           </div>
@@ -377,66 +432,193 @@
       <section v-if="currentMenu === 'buttons'" class="max-w-2xl">
         <h2 class="text-xl font-medium mb-6">按钮配置</h2>
 
-        <!-- Twitter 配置 -->
-        <div
-          class="mb-6 bg-white p-6 rounded-lg shadow-sm border border-gray-200"
-        >
-          <h3 class="text-lg font-medium mb-4">Twitter 按钮</h3>
+        <!-- 按钮列表 -->
+        <div class="mb-6">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-medium">已配置的按钮</h3>
+            <button
+              @click="showAddButton = true"
+              class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              添加按钮
+            </button>
+          </div>
 
-          <!-- Post 按钮配置 -->
-          <ButtonConfig
-            title="POST 按钮"
-            :buttons="config.buttons.twitter.post"
-            platform="twitter"
-            page="post"
-            @add="addButton"
-            @remove="removeButton"
-          />
+          <!-- 按钮列表 -->
+          <div class="space-y-4">
+            <div
+              v-for="button in config.buttons"
+              :key="button.id"
+              class="bg-white p-6 rounded-lg shadow-sm border border-gray-200"
+            >
+              <div class="flex justify-between items-start mb-4">
+                <div class="flex items-center gap-2">
+                  <span class="text-2xl">{{ button.icon }}</span>
+                  <h4 class="text-lg font-medium">{{ button.name }}</h4>
+                </div>
+                <div class="flex items-center gap-2">
+                  <label
+                    class="relative inline-flex items-center cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      v-model="button.enabled"
+                      class="sr-only peer"
+                    />
+                    <div
+                      class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"
+                    ></div>
+                  </label>
+                  <button
+                    @click="removeButton(button)"
+                    class="p-2 text-gray-500 hover:text-red-600 transition-colors"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-5 w-5"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
+                        clip-rule="evenodd"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
 
-          <!-- Reply 按钮配置 -->
-          <ButtonConfig
-            title="REPLY 按钮"
-            :buttons="config.buttons.twitter.reply"
-            platform="twitter"
-            page="reply"
-            @add="addButton"
-            @remove="removeButton"
-          />
+              <!-- 按钮配置表单 -->
+              <div class="space-y-4">
+                <div class="config-item">
+                  <div class="flex gap-4">
+                    <div class="flex-1">
+                      <label
+                        class="block text-sm font-medium text-gray-700 mb-2"
+                        >按钮名称</label
+                      >
+                      <input
+                        type="text"
+                        v-model="button.name"
+                        class="form-input"
+                        placeholder="请输入按钮名称"
+                        @input="updateButton(button)"
+                      />
+                    </div>
+                    <div class="flex-1">
+                      <label
+                        class="block text-sm font-medium text-gray-700 mb-2"
+                        >按钮图标</label
+                      >
+                      <div class="relative">
+                        <select
+                          v-model="button.icon"
+                          class="form-input"
+                          @change="updateButton(button)"
+                        >
+                          <option
+                            v-for="icon in buttonIconOptions"
+                            :key="icon.value"
+                            :value="icon.value"
+                          >
+                            {{ icon.label }}
+                          </option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-          <!-- DM 按钮配置 -->
-          <ButtonConfig
-            title="DM 按钮"
-            :buttons="config.buttons.twitter.dm"
-            platform="twitter"
-            page="dm"
-            @add="addButton"
-            @remove="removeButton"
-          />
-        </div>
-
-        <!-- ProductHunt 配置 -->
-        <div
-          class="mb-6 bg-white p-6 rounded-lg shadow-sm border border-gray-200"
-        >
-          <h3 class="text-lg font-medium mb-4">ProductHunt 按钮</h3>
-
-          <!-- Reply 按钮配置 -->
-          <ButtonConfig
-            title="REPLY 按钮"
-            :buttons="config.buttons.producthunt.reply"
-            platform="producthunt"
-            page="reply"
-            @add="addButton"
-            @remove="removeButton"
-          />
+                <div class="config-item">
+                  <label class="block text-sm font-medium text-gray-700 mb-2"
+                    >提示词</label
+                  >
+                  <textarea
+                    v-model="button.prompt"
+                    class="form-input min-h-[100px]"
+                    placeholder="请输入提示词"
+                    @input="updateButton(button)"
+                  ></textarea>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
+
+      <!-- 添加按钮对话框 -->
+      <div
+        v-if="showAddButton"
+        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+      >
+        <div class="bg-white rounded-lg p-6 w-[400px]">
+          <h3 class="text-lg font-medium mb-4">添加按钮</h3>
+          <div class="space-y-4">
+            <div class="config-item">
+              <div class="flex gap-4">
+                <div class="flex-1">
+                  <label class="block text-sm font-medium text-gray-700 mb-2"
+                    >按钮名称</label
+                  >
+                  <input
+                    type="text"
+                    v-model="newButton.name"
+                    class="form-input"
+                    placeholder="请输入按钮名称"
+                  />
+                </div>
+                <div class="flex-1">
+                  <label class="block text-sm font-medium text-gray-700 mb-2"
+                    >按钮图标</label
+                  >
+                  <div class="relative">
+                    <select v-model="newButton.icon" class="form-input">
+                      <option
+                        v-for="icon in buttonIconOptions"
+                        :key="icon.value"
+                        :value="icon.value"
+                      >
+                        {{ icon.label }}
+                      </option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="config-item">
+              <label class="block text-sm font-medium text-gray-700 mb-2"
+                >提示词</label
+              >
+              <textarea
+                v-model="newButton.prompt"
+                class="form-input min-h-[100px]"
+                placeholder="请输入提示词"
+              ></textarea>
+            </div>
+          </div>
+          <div class="flex justify-end gap-2 mt-6">
+            <button
+              @click="showAddButton = false"
+              class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+            >
+              取消
+            </button>
+            <button
+              @click="addButton"
+              class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              确定
+            </button>
+          </div>
+        </div>
+      </div>
 
       <!-- 保存按钮 -->
       <div class="fixed bottom-8 right-8">
         <button
           @click="saveConfig"
-          class="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm transition-colors"
+          class="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm transition-all transform active:scale-95"
         >
           保存配置
         </button>
@@ -448,9 +630,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { config, initConfig, onInput } from "../../common/storage-config";
-import { type AIServiceConfig } from "../../common/storage-config";
-import type { ButtonConfig as ButtonConfigType } from "../../common/storage-config";
-import ButtonConfig from "../../components/ui/ButtonConfig.vue";
+import {
+  type AIServiceConfig,
+  ButtonIconEnum,
+} from "../../common/storage-config";
+import { type ButtonConfig } from "../../common/storage-config";
 import { log_error } from "../../common/logging";
 
 // 使用 computed 优化菜单项
@@ -466,8 +650,13 @@ const showAddService = ref(false);
 const showAddModel = ref(false);
 const newModelName = ref("");
 const currentService = ref<AIServiceConfig | null>(null);
-const showDeleteServiceConfirm = ref(false);
-const serviceToDelete = ref<AIServiceConfig | null>(null);
+const showDeleteConfirm = ref(false);
+const itemToDelete = ref<{ type: "service" | "button"; item: any } | null>(
+  null
+);
+
+// 按钮配置相关
+const showAddButton = ref(false);
 
 // 新服务配置
 const newService = ref<Partial<AIServiceConfig>>({
@@ -476,7 +665,26 @@ const newService = ref<Partial<AIServiceConfig>>({
   apiKey: "",
   model: "",
   customModels: [],
-  enabled: true
+  enabled: true,
+});
+
+// 新按钮配置
+const newButton = ref<Partial<ButtonConfig>>({
+  name: "",
+  icon: "✨",
+  prompt: "",
+  enabled: true,
+});
+
+// 获取所有按钮图标选项
+const buttonIconOptions = computed(() => {
+  // 过滤掉数字索引，只保留实际的图标值
+  return Object.values(ButtonIconEnum)
+    .filter((value) => typeof value === "string")
+    .map((icon) => ({
+      value: icon,
+      label: icon,
+    }));
 });
 
 // 优化添加服务方法
@@ -492,7 +700,7 @@ const addService = () => {
     apiKey: newService.value.apiKey || "",
     model: newService.value.model || "",
     customModels: [newService.value.model || ""],
-    enabled: true
+    enabled: true,
   };
 
   config.value.aiServices.push(service);
@@ -503,40 +711,85 @@ const addService = () => {
     apiKey: "",
     model: "",
     customModels: [],
-    enabled: true
+    enabled: true,
+  };
+};
+
+// 添加按钮方法
+const addButton = () => {
+  if (
+    !newButton.value.name ||
+    !newButton.value.icon ||
+    !newButton.value.prompt
+  ) {
+    return;
+  }
+
+  const button: ButtonConfig = {
+    id: `custom-${Date.now()}`,
+    name: newButton.value.name,
+    icon: newButton.value.icon,
+    prompt: newButton.value.prompt,
+    enabled: true,
+  };
+
+  config.value.buttons.push(button);
+  showAddButton.value = false;
+  newButton.value = {
+    name: "",
+    icon: "✨",
+    prompt: "",
+    enabled: true,
   };
 };
 
 // 优化移除服务方法
 const removeService = (service: AIServiceConfig) => {
-  serviceToDelete.value = service;
-  showDeleteServiceConfirm.value = true;
+  itemToDelete.value = { type: "service", item: service };
+  showDeleteConfirm.value = true;
 };
 
-// 确认删除服务
-const confirmDeleteService = () => {
-  if (!serviceToDelete.value) return;
-  
-  const index = config.value.aiServices.findIndex(s => s.id === serviceToDelete.value?.id);
-  if (index > -1) {
-    // 如果删除的是当前选中的服务，切换到第一个可用的服务
-    if (serviceToDelete.value.id === config.value.basic.aiProvider) {
-      const firstEnabled = config.value.aiServices.find(s => s.enabled && s.id !== serviceToDelete.value?.id);
-      if (firstEnabled) {
-        config.value.basic.aiProvider = firstEnabled.id;
+// 移除按钮方法
+const removeButton = (button: ButtonConfig) => {
+  itemToDelete.value = { type: "button", item: button };
+  showDeleteConfirm.value = true;
+};
+
+// 确认删除方法
+const confirmDelete = () => {
+  if (!itemToDelete.value) return;
+
+  if (itemToDelete.value.type === "service") {
+    const service = itemToDelete.value.item as AIServiceConfig;
+    const index = config.value.aiServices.findIndex((s) => s.id === service.id);
+    if (index > -1) {
+      // 如果删除的是当前选中的服务，切换到第一个可用的服务
+      if (service.id === config.value.basic.aiProvider) {
+        const firstEnabled = config.value.aiServices.find(
+          (s) => s.enabled && s.id !== service.id
+        );
+        if (firstEnabled) {
+          config.value.basic.aiProvider = firstEnabled.id;
+        }
       }
+      config.value.aiServices.splice(index, 1);
     }
-    config.value.aiServices.splice(index, 1);
+  } else if (itemToDelete.value.type === "button") {
+    const button = itemToDelete.value.item as ButtonConfig;
+    const index = config.value.buttons.findIndex((b) => b.id === button.id);
+    if (index > -1) {
+      config.value.buttons.splice(index, 1);
+    }
   }
-  
-  showDeleteServiceConfirm.value = false;
-  serviceToDelete.value = null;
+
+  showDeleteConfirm.value = false;
+  itemToDelete.value = null;
 };
 
 // 删除模型
 const removeModel = (service: AIServiceConfig, model: string) => {
   if (!service.customModels) return;
-  
+
   const index = service.customModels.indexOf(model);
   if (index > -1) {
     service.customModels.splice(index, 1);
@@ -549,9 +802,17 @@ const removeModel = (service: AIServiceConfig, model: string) => {
 
 // 添加新的方法：更新服务配置
 const updateService = (service: AIServiceConfig) => {
-  const index = config.value.aiServices.findIndex(s => s.id === service.id);
+  const index = config.value.aiServices.findIndex((s) => s.id === service.id);
   if (index !== -1) {
     config.value.aiServices[index] = { ...service };
+  }
+};
+
+// 更新按钮配置
+const updateButton = (button: ButtonConfig) => {
+  const index = config.value.buttons.findIndex((b) => b.id === button.id);
+  if (index !== -1) {
+    config.value.buttons[index] = { ...button };
   }
 };
 
@@ -586,68 +847,6 @@ const saveConfig = async () => {
   }
 };
 
-// 优化按钮操作方法
-const addButton = (platform: string, page: string) => {
-  const newButton: ButtonConfigType = {
-    id: Date.now().toString(),
-    name: "新按钮",
-    icon: "✨",
-    prompt: "请输入提示词",
-    enabled: true,
-  };
-
-  const buttons = getButtonsByPlatform(platform, page);
-  if (!buttons) return;
-
-  buttons.push(newButton);
-  updateButtons(platform, page, buttons);
-};
-
-const removeButton = (platform: string, page: string, id: string) => {
-  const buttons = getButtonsByPlatform(platform, page);
-  if (!buttons) return;
-
-  const index = buttons.findIndex((b) => b.id === id);
-  if (index > -1) {
-    buttons.splice(index, 1);
-    updateButtons(platform, page, buttons);
-  }
-};
-
-// 辅助函数：获取按钮列表
-const getButtonsByPlatform = (
-  platform: string,
-  page: string
-): ButtonConfigType[] | undefined => {
-  if (platform === "twitter") {
-    return config.value.buttons.twitter[
-      page as keyof typeof config.value.buttons.twitter
-    ] as ButtonConfigType[];
-  } else if (platform === "producthunt") {
-    return config.value.buttons.producthunt[
-      page as keyof typeof config.value.buttons.producthunt
-    ] as ButtonConfigType[];
-  }
-  return undefined;
-};
-
-// 辅助函数：更新按钮列表
-const updateButtons = (
-  platform: string,
-  page: string,
-  buttons: ButtonConfigType[]
-) => {
-  if (platform === "twitter") {
-    config.value.buttons.twitter[
-      page as keyof typeof config.value.buttons.twitter
-    ] = buttons;
-  } else if (platform === "producthunt") {
-    config.value.buttons.producthunt[
-      page as keyof typeof config.value.buttons.producthunt
-    ] = buttons;
-  }
-};
-
 onMounted(async () => {
   try {
     await initConfig();
@@ -655,10 +854,15 @@ onMounted(async () => {
     if (!Array.isArray(config.value.aiServices)) {
       config.value.aiServices = [];
     }
+    // 确保 buttons 是数组
+    if (!Array.isArray(config.value.buttons)) {
+      config.value.buttons = [];
+    }
   } catch (error) {
     log_error("初始化配置失败:", error);
     // 确保即使初始化失败也有默认值
     config.value.aiServices = [];
+    config.value.buttons = [];
   }
 });
 </script>
@@ -666,7 +870,7 @@ onMounted(async () => {
 <!-- 基础样式 - 可以添加到你的全局样式或组件样式中 -->
 <style>
 .form-input {
-  @apply w-full rounded-md border-gray-300 bg-gray-50 shadow-sm text-base py-2.5 focus:border-blue-500 focus:ring-blue-500 focus:bg-white transition-colors;
+  @apply w-full rounded-md border-gray-300 bg-gray-50 shadow-sm text-base py-2.5 px-4 focus:border-blue-500 focus:ring-blue-500 focus:bg-white transition-colors;
 }
 
 .config-item {
@@ -680,4 +884,23 @@ onMounted(async () => {
 .service-item:hover {
   @apply shadow-md;
 }
+
+/* 优化下拉框样式 */
+select.form-input {
+  appearance: none;
+  padding-right: 2.5rem;
+  padding-left: 1rem;
+}
+
+/* 添加滚动条样式 */
+select.form-input option {
+  padding: 8px;
+  font-size: 1.1rem;
+}
+
+/* 调整内容边距 */
+.config-item label {
+  @apply pl-1;
+}
+
 </style>

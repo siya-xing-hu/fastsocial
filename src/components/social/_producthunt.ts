@@ -40,7 +40,7 @@ async function ttProductHuntReply(): Promise<boolean> {
   );
 
   buttonList.value.push(
-    ...config.value.buttons.producthunt.reply
+    ...config.value.buttons
       .filter((btn) => btn.enabled)
       .map((btn) => ({
         ...btn,

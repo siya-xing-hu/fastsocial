@@ -8,9 +8,27 @@ import {
 
 // 定义翻译渠道
 export enum TranslateChannelEnum {
+  AI = "ai",
   GOOGLE = "google",
   DEEPL = "deepl",
-  AI = "ai",
+}
+
+// 定义按钮图标枚举
+export enum ButtonIconEnum {
+  "✨",
+  "🌎",
+  "💡",
+  "💻",
+  "✍️",
+  "🔍",
+  "🔧",
+  "📚",
+  "💬",
+  "💼",
+  "✈️",
+  "⚽",
+  "🎵",
+  "🎨"
 }
 
 // AI服务配置接口
@@ -31,54 +49,32 @@ export interface ButtonConfig {
   prompt: string;
   enabled: boolean;
 }
-
-export interface ButtonConfigList {
-  twitter: {
-    post: ButtonConfig[];
-    reply: ButtonConfig[];
-    dm: ButtonConfig[];
-  };
-  producthunt: {
-    reply: ButtonConfig[];
-  };
-}
-
 interface Config {
   basic: {
     aiProvider: string; // 改为字符串，存储服务ID
     translateProvider: TranslateChannelEnum;
     targetLang: string;
     autoTranslate: boolean;
-    translatePrompt: string; // 添加翻译 prompt 配置
   };
   aiServices: AIServiceConfig[];
   translationService: {
+    translatePrompt: string; // 添加翻译 prompt 配置
     deepl: {
       apiKey: string;
     };
   };
-  buttons: ButtonConfigList;
+  buttons: ButtonConfig[];
 }
 
 // 默认配置
 const DEFAULT_CONFIG: Config = {
   basic: {
-    aiProvider: "ollama-default", // 默认使用Ollama
-    translateProvider: TranslateChannelEnum.AI,
+    aiProvider: "ollama-default",
+    translateProvider: TranslateChannelEnum.GOOGLE,
     targetLang: "zh-CN",
     autoTranslate: true,
-    translatePrompt: "", // 添加默认翻译 prompt
   },
   aiServices: [
-    {
-      id: "openai-default",
-      name: "OpenAI",
-      endpoint: "https://api.openai.com/v1/chat/completions",
-      apiKey: "",
-      model: "gpt-4o-mini",
-      customModels: ["gpt-3.5-turbo", "gpt-4o-mini"],
-      enabled: false,
-    },
     {
       id: "ollama-default",
       name: "Ollama",
@@ -88,54 +84,41 @@ const DEFAULT_CONFIG: Config = {
       customModels: ["llama3"],
       enabled: true,
     },
+    {
+      id: "gemini-default",
+      name: "Gemini",
+      endpoint:
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      apiKey: "",
+      model: "gemini-2.0-flash",
+      customModels: ["gemini-2.0-flash"],
+      enabled: true,
+    },
+    {
+      id: "openai-default",
+      name: "OpenAI",
+      endpoint: "https://api.openai.com/v1/chat/completions",
+      apiKey: "",
+      model: "gpt-4o-mini",
+      customModels: ["gpt-3.5-turbo", "gpt-4o-mini"],
+      enabled: false,
+    },
   ],
   translationService: {
+    translatePrompt: "", // 添加默认翻译 prompt
     deepl: {
       apiKey: "",
     },
   },
-  buttons: {
-    twitter: {
-      post: [
-        {
-          id: Date.now().toString(),
-          name: "Translate",
-          icon: "🌎",
-          prompt: "翻译内容",
-          enabled: true,
-        },
-      ],
-      reply: [
-        {
-          id: Date.now().toString(),
-          name: "Translate",
-          icon: "🌎",
-          prompt: "翻译内容",
-          enabled: true,
-        },
-      ],
-      dm: [
-        {
-          id: Date.now().toString(),
-          name: "Translate",
-          icon: "🌎",
-          prompt: "翻译内容",
-          enabled: true,
-        },
-      ],
+  buttons: [
+    {
+      id: `custom-${Date.now()}`,
+      name: "翻译",
+      icon: "🌎",
+      prompt: "请将以下文本翻译成中文, 直接输出翻译结果，不要过度解读。翻译要求：1. 保持专业术语的准确性，对于专业术语可以选择不翻译；2. 保持原文的语气和风格；3. 确保翻译的流畅性和自然度。",
+      enabled: true,
     },
-    producthunt: {
-      reply: [
-        {
-          id: Date.now().toString(),
-          name: "Translate",
-          icon: "🌎",
-          prompt: "翻译内容",
-          enabled: true,
-        },
-      ],
-    },
-  },
+  ],
 };
 
 export const config = ref<Config>(DEFAULT_CONFIG);
@@ -151,7 +134,9 @@ export async function initConfig() {
 }
 
 export const onInput = debounce(async () => {
-  await chrome.storage.local.set({ ["fast-social-config"]: JSON.stringify(config.value) });
+  await chrome.storage.local.set({
+    ["fast-social-config"]: JSON.stringify(config.value),
+  });
 
   const message: ConfigUpdateRuntimeMessage = {
     type: RuntimeMessageTypeEnum.CONFIG_UPDATE,

@@ -61,7 +61,7 @@ export async function translate(channel: TranslateChannelEnum, text: string, loc
     case TranslateChannelEnum.DEEPL:
       return deeplTranslate(text, locale);
     case TranslateChannelEnum.AI:
-      let prompt = config.value.basic.translatePrompt;
+      let prompt = config.value.translationService.translatePrompt;
       if (!prompt) {
         prompt = "请将以下文本翻译成${targetLang}, 直接输出翻译结果，不要过度解读。翻译要求：1. 保持专业术语的准确性，对于专业术语可以选择不翻译；2. 保持原文的语气和风格；3. 确保翻译的流畅性和自然度。";
       }

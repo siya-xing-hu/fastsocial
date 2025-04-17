@@ -12,13 +12,6 @@ import {
 } from "../../common/runtime-message";
 import { log, log_error } from "../../common/logging";
 import { config, TranslateChannelEnum } from "../../common/storage-config";
-interface TranslateData {
-  id?: string;
-  text: string;
-  show: boolean;
-}
-
-const translateDataList: TranslateData[] = [];
 
 /**
  * 翻译文本内容
@@ -52,73 +45,42 @@ export async function execTranslate(
   clientY: number,
 ): Promise<void> {
   const targetDiv = findNearestDivAndText(clientX, clientY);
+  if (!targetDiv) return;
 
-  if (targetDiv) {
-    // 如果是翻译元素，直接隐藏翻译元素 text-is-translate-text
-    if (targetDiv.getAttribute("text-is-translate-text")) {
-      const translateId = targetDiv.getAttribute("text-is-translate-text");
-      const translateData = translateDataList.find(
-        (item) => item.id === translateId,
-      );
-      if (translateData) {
-        if (translateData.show) {
-          translateData.show = false;
-          // 直接删除当前的 targetDiv
-          targetDiv.remove();
-        } else {
-          translateData.show = true;
-          // 显示翻译元素
-          createContainer(targetDiv, {
-            id: translateData.id,
-            text: translateData.text,
-            show: true,
-          });
-        }
-      }
-      return;
-    }
-
-    // 判断是否已经翻译
-    if (targetDiv.getAttribute("text-is-translated")) {
-      const translateId = targetDiv.getAttribute("text-is-translated");
-      const translateData = translateDataList.find(
-        (item) => item.id === translateId,
-      );
-      if (translateData) {
-        if (translateData.show) {
-          translateData.show = false;
-          // 删除翻译元素
-          const translateElement = document.querySelector(
-            `[text-is-translate-text="${translateId}"]`,
-          );
-          translateElement && translateElement.remove();
-        } else {
-          translateData.show = true;
-          // 显示翻译元素
-          createContainer(targetDiv, {
-            id: translateData.id,
-            text: translateData.text,
-            show: true,
-          });
-        }
-      }
-    } else {
-      // 翻译
-      const textContent = targetDiv.textContent;
-      if (!textContent || !isContent(textContent)) {
-        return;
-      }
-      const translatedText = await translateContent(config.value.basic.translateProvider, textContent);
-      if (!translatedText) {
-        log("No translated text.");
-        return;
-      }
-      createContainer(targetDiv, {
-        text: translatedText,
-        show: true,
-      });
-    }
+  // 处理翻译元素点击
+  if (targetDiv.getAttribute("text-is-translate-text")) {
+    // 直接切换显示状态
+    const isVisible = targetDiv.style.display !== "none";
+    targetDiv.style.display = isVisible ? "none" : "block";
+    return;
   }
+
+  // 处理已翻译元素的点击
+  if (targetDiv.getAttribute("text-is-translated")) {
+    const translateId = targetDiv.getAttribute("text-is-translated");
+    const translateElement = document.querySelector(
+      `[text-is-translate-text="${translateId}"]`
+    ) as HTMLElement;
+    
+    if (translateElement) {
+      // 直接切换显示状态
+      const isVisible = translateElement.style.display !== "none";
+      translateElement.style.display = isVisible ? "none" : "block";
+    }
+    return;
+  }
+
+  // 处理新文本翻译
+  const textContent = targetDiv.textContent;
+  if (!textContent || !isContent(textContent)) return;
+  
+  const translatedText = await translateContent(config.value.basic.translateProvider, textContent);
+  if (!translatedText) {
+    log("No translated text.");
+    return;
+  }
+  
+  createContainer(targetDiv, translatedText);
 }
 
 /**
@@ -184,9 +146,19 @@ function findNearestDivAndText(
     }
   }
 
-  // 如果 targetDiv 不为空，但是时我新增的元素，则返回 null
-  if (targetDiv && targetDiv.getAttribute("text-is-translate-text")) {
-    return null;
+  // 如果 targetDiv 不为空，检查是否是翻译组件
+  if (targetDiv) {
+    // 检查当前元素及其最多三层父级元素是否是翻译组件
+    let element: HTMLElement | null = targetDiv;
+    let depth = 0;
+    
+    while (element && depth < 4) {
+      if (element.getAttribute("text-is-translate-text")) {
+        return element;
+      }
+      element = element.parentElement;
+      depth++;
+    }
   }
 
   return targetDiv;
@@ -195,28 +167,27 @@ function findNearestDivAndText(
 /**
  * 创建翻译容器
  * @param targetDiv 目标元素
- * @param translateData 翻译数据
+ * @param translatedText 翻译后的文本
  */
 function createContainer(
   targetDiv: HTMLElement,
-  translateData: TranslateData,
+  translatedText: string,
 ): void {
-  if (!translateData.id) {
-    // 生成一个 uuid
-    translateData.id = randomString(10);
-    translateDataList.push(translateData);
-  }
+  // 生成一个唯一ID
+  const translateId = randomString(10);
 
+  // 创建新的翻译元素
   const div = document.createElement("div");
-  div.setAttribute("text-is-translate-text", translateData.id);
+  div.setAttribute("text-is-translate-text", translateId);
   div.style.textOverflow = "unset";
+  div.style.display = "block"; // 默认显示
 
   const app = createApp(Translate, {
-    translatedText: translateData.text,
+    translatedText: translatedText,
   });
   app.mount(div);
 
   // 将翻译元素插入到目标元素后面
   targetDiv.parentNode?.insertBefore(div, targetDiv.nextSibling);
-  targetDiv.setAttribute("text-is-translated", translateData.id);
+  targetDiv.setAttribute("text-is-translated", translateId);
 } 
