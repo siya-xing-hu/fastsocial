@@ -18,12 +18,13 @@ import { config, TranslateChannelEnum } from "../../common/storage-config";
  * @param text 要翻译的文本
  * @returns 翻译后的文本
  */
-export async function translateContent(channel: TranslateChannelEnum, text: string): Promise<string> {
+export async function translateContent(channel: TranslateChannelEnum, text: string, isAdvanced: boolean): Promise<string> {
   const message: TranslateRuntimeMessage = {
     type: RuntimeMessageTypeEnum.TRANSLATE,
     data: {
       channel: channel,
       content: text,
+      is_advanced: isAdvanced,
     },
   };
 
@@ -43,12 +44,13 @@ export async function translateContent(channel: TranslateChannelEnum, text: stri
 export async function execTranslate(
   clientX: number,
   clientY: number,
+  isAdvanced: boolean,
 ): Promise<void> {
   const targetDiv = findNearestDivAndText(clientX, clientY);
   if (!targetDiv) return;
 
   // 处理翻译元素点击
-  if (targetDiv.getAttribute("text-is-translate-text")) {
+  if (targetDiv.getAttribute("text-is-translate-text") || targetDiv.getAttribute("text-is-translate-text-advanced")) {
     // 直接切换显示状态
     const isVisible = targetDiv.style.display !== "none";
     targetDiv.style.display = isVisible ? "none" : "block";
@@ -56,12 +58,24 @@ export async function execTranslate(
   }
 
   // 处理已翻译元素的点击
-  if (targetDiv.getAttribute("text-is-translated")) {
+  if (isAdvanced && targetDiv.getAttribute("text-is-translated-advanced")) {
+    const translateId = targetDiv.getAttribute("text-is-translated-advanced");
+    const translateElement = document.querySelector(
+      `[text-is-translate-text-advanced="${translateId}"]`
+    ) as HTMLElement;
+    
+    if (translateElement) {
+      // 直接切换显示状态
+      const isVisible = translateElement.style.display !== "none";
+      translateElement.style.display = isVisible ? "none" : "block";
+    }
+    return;
+  }
+  if (!isAdvanced && targetDiv.getAttribute("text-is-translated")) {
     const translateId = targetDiv.getAttribute("text-is-translated");
     const translateElement = document.querySelector(
       `[text-is-translate-text="${translateId}"]`
     ) as HTMLElement;
-    
     if (translateElement) {
       // 直接切换显示状态
       const isVisible = translateElement.style.display !== "none";
@@ -74,13 +88,13 @@ export async function execTranslate(
   const textContent = targetDiv.textContent;
   if (!textContent || !isContent(textContent)) return;
   
-  const translatedText = await translateContent(config.value.basic.translateProvider, textContent);
+  const translatedText = await translateContent(config.value.basic.translateProvider, textContent, isAdvanced);
   if (!translatedText) {
     log("No translated text.");
     return;
   }
   
-  createContainer(targetDiv, translatedText);
+  createContainer(targetDiv, translatedText, isAdvanced);
 }
 
 /**
@@ -91,6 +105,7 @@ export async function execTranslate(
 export async function execNotionTranslate(
   clientX: number,
   clientY: number,
+  isAdvanced: boolean,
 ): Promise<void> {
   const targetDiv = findNearestDivAndText(clientX, clientY);
 
@@ -105,7 +120,7 @@ export async function execNotionTranslate(
       targetDiv.textContent = textContent.split("\u200D\n")[0];
       return;
     }
-    const translatedText = await translateContent(config.value.basic.translateProvider, textContent);
+    const translatedText = await translateContent(config.value.basic.translateProvider, textContent, isAdvanced);
     if (!translatedText) {
       log("No translated text.");
       return;
@@ -153,7 +168,7 @@ function findNearestDivAndText(
     let depth = 0;
     
     while (element && depth < 4) {
-      if (element.getAttribute("text-is-translate-text")) {
+      if (element.getAttribute("text-is-translate-text") || element.getAttribute("text-is-translate-text-advanced")) {
         return element;
       }
       element = element.parentElement;
@@ -172,13 +187,14 @@ function findNearestDivAndText(
 function createContainer(
   targetDiv: HTMLElement,
   translatedText: string,
+  isAdvanced: boolean,
 ): void {
   // 生成一个唯一ID
   const translateId = randomString(10);
 
   // 创建新的翻译元素
   const div = document.createElement("div");
-  div.setAttribute("text-is-translate-text", translateId);
+  div.setAttribute(isAdvanced? "text-is-translate-text-advanced" : "text-is-translate-text", translateId);
   div.style.textOverflow = "unset";
   div.style.display = "block"; // 默认显示
 
@@ -189,5 +205,5 @@ function createContainer(
 
   // 将翻译元素插入到目标元素后面
   targetDiv.parentNode?.insertBefore(div, targetDiv.nextSibling);
-  targetDiv.setAttribute("text-is-translated", translateId);
+  targetDiv.setAttribute(isAdvanced? "text-is-translated-advanced" : "text-is-translated", translateId);
 } 

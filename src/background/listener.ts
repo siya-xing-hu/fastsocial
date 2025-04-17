@@ -1,5 +1,10 @@
+import { readyTabs } from ".";
 import { log } from "../common/logging";
-import { sendTabMessage, TabMessageTypeEnum, XUrlTabMessage } from "../common/tabs-message";
+import {
+  sendTabMessage,
+  TabMessageTypeEnum,
+  XUrlTabMessage,
+} from "../common/tabs-message";
 
 export async function addTabListener() {
   // 监听标签页更新事件
@@ -28,7 +33,7 @@ export async function addTabListener() {
 
 // 发送消息给内容脚本
 function sendMessageToContentScript(tabId: number, url: string | undefined) {
-  if (!url || typeof tabId != "number") {
+  if (!url || typeof tabId != "number" || !readyTabs.has(tabId)) {
     return;
   }
   if (isTwitterUrl(url)) {
@@ -39,13 +44,12 @@ function sendMessageToContentScript(tabId: number, url: string | undefined) {
       },
     };
     sendTabMessage(tabId, message).then(() => {
-      log("ok")
-    })
+      log("ok");
+    });
   }
 }
 
 // 判断是否是 Twitter URL
 function isTwitterUrl(url: string) {
-  return url.startsWith("https://twitter.com/") ||
-    url.startsWith("https://x.com/");
+  return url.startsWith("https://x.com/");
 }

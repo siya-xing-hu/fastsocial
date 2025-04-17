@@ -18,6 +18,9 @@ export type TabMessage =
 
 export interface ConfigUpdateTabMessage {
   type: TabMessageTypeEnum.CONFIG_UPDATE;
+  data: {
+    url: string | undefined;
+  };
 }
 
 export interface XUrlTabMessage {
@@ -46,10 +49,14 @@ export interface ErrorTabMessageResponse {
 // 封装 chrome.runtime.sendMessage 统一处理
 export async function sendTabMessage(tabId: number, message: TabMessage) {
   try {
-    const response: TabMessageResponse = await chrome.tabs.sendMessage(tabId, message);
+    const response: TabMessageResponse = await chrome.tabs.sendMessage(
+      tabId,
+      message,
+    );
     log("received tabMessage response:", response);
     return response;
   } catch (e) {
-    log_error(e)
-  } 
+    log_error("sendTabMessage error:", e);
+    return null;
+  }
 }

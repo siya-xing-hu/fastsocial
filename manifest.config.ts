@@ -5,8 +5,8 @@ import { defineManifest } from "@crxjs/vite-plugin";
 const isDevHostsEnabled = true;
 
 const prodHostPermissions = [
-  "https://twitter.com/*",
-  "https://x.com/*"
+  "https://x.com/*",
+  "https://*.x.com/*",
 ];
 
 const devHostPermissions = [

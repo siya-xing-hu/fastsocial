@@ -407,7 +407,7 @@ async function ttTwitterTranslate(): Promise<void> {
       // 检查缓存
       if (!translateCache.has(tweetId)) {
         // 翻译并缓存
-        translateContent(TranslateChannelEnum.GOOGLE, originalText).then(
+        translateContent(TranslateChannelEnum.GOOGLE, originalText, false).then(
           (translatedText) => {
             if (translatedText) {
               translateCache.set(tweetId, {

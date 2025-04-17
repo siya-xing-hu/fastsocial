@@ -5,20 +5,28 @@ import {
   RuntimeMessageResponse,
   RuntimeMessageTypeEnum,
 } from "../common/runtime-message";
-import { config, initConfig } from "../common/storage-config";
+import { initConfig } from "../common/storage-config";
 import {
   ConfigUpdateTabMessage,
   sendTabMessage,
   TabMessageTypeEnum,
 } from "../common/tabs-message";
-import { retry } from "../utils/kit";
 import { execGptPrompt } from "../utils/ai";
+import { retry } from "../utils/kit";
 import { translate } from "../utils/translate";
 import { addTabListener } from "./listener";
+
+// 跟踪已就绪的标签页
+export const readyTabs = new Set<number>();
 
 export function init() {
   const now = new Date();
   log("### init ###", now.toISOString());
+
+  // 监听标签页关闭事件
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    readyTabs.delete(tabId);
+  });
 
   chrome.runtime.onMessage.addListener(
     (
@@ -29,6 +37,11 @@ export function init() {
       log("message", message.type);
 
       switch (message.type) {
+        case RuntimeMessageTypeEnum.CONTENT_SCRIPT_READY:
+          if (sender.tab?.id) {
+            readyTabs.add(sender.tab.id);
+          }
+          break;
         case RuntimeMessageTypeEnum.TRANSLATE:
           retry(
             async () => {
@@ -36,6 +49,7 @@ export function init() {
                 await translate(
                   message.data.channel,
                   message.data.content,
+                  message.data.is_advanced,
                   "auto",
                 ),
               );
@@ -49,20 +63,16 @@ export function init() {
           });
           break;
         case RuntimeMessageTypeEnum.CONFIG_UPDATE:
-          const sendMessage: ConfigUpdateTabMessage = {
-            type: TabMessageTypeEnum.CONFIG_UPDATE,
-          };
           initConfig().then(() => {
-            chrome.tabs.query({ url: "*://*.twitter.com/*" }, (tabs) => {
-              tabs.forEach((tab) => {
-                if (typeof tab.id === "number") { // 确保 tab.id 是一个数字
-                  sendTabMessage(tab.id, sendMessage);
-                }
-              });
-            });
             chrome.tabs.query({ url: "*://*.x.com/*" }, (tabs) => {
               tabs.forEach((tab) => {
-                if (typeof tab.id === "number") { // 确保 tab.id 是一个数字
+                if (typeof tab.id === "number") {
+                  const sendMessage: ConfigUpdateTabMessage = {
+                    type: TabMessageTypeEnum.CONFIG_UPDATE,
+                    data: {
+                      url: tab.url,
+                    },
+                  };
                   sendTabMessage(tab.id, sendMessage);
                 }
               });

@@ -9,18 +9,21 @@ export enum RuntimeMessageTypeEnum {
   TRANSLATE = "translate",
   CONFIG_UPDATE = "config-update",
   AI_GENARATE = "ai-genarate",
+  CONTENT_SCRIPT_READY = "content-script-ready",
 }
 
 export type RuntimeMessage =
   | TranslateRuntimeMessage
   | ConfigUpdateRuntimeMessage
-  | AIGenarateRuntimeMessage;
+  | AIGenarateRuntimeMessage
+  | ContentScriptReadyMessage;
 
 export interface TranslateRuntimeMessage {
   type: RuntimeMessageTypeEnum.TRANSLATE;
   data: {
     channel: TranslateChannelEnum;
     content: string;
+    is_advanced: boolean;
   };
 }
 
@@ -36,6 +39,10 @@ export interface AIGenarateRuntimeMessage {
 export interface AIGenarateData {
   content: string;
   button: ButtonConfig;
+}
+
+export interface ContentScriptReadyMessage {
+  type: RuntimeMessageTypeEnum.CONTENT_SCRIPT_READY;
 }
 
 // 用于 chrome.runtime.sendMessage 的统一响应结构

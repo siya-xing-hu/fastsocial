@@ -3,7 +3,7 @@
     <button v-for="button in buttonList" :key="button.id" :id="button.id" :disabled="!button.enabled"
       class="twitter-btn" @click="handleClick(button)">
       <span class="flex items-center">
-        {{ `${button.icon}${button.name}` }}
+        {{ `${button.icon} ${button.name}` }}
         <span v-if="!button.enabled" class="ml-2">
           <i class="fas fa-spinner fa-spin"></i>
         </span>
