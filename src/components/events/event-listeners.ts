@@ -36,14 +36,13 @@ function handleMouseMove(event: MouseEvent) {
  * 使用单一事件处理所有键盘操作，简化逻辑
  */
 async function handleKeyDown(event: KeyboardEvent) {
-  // 检查是否满足快捷键条件
-  // 只有当按下的是Shift键，且没有其他修饰键被按下时，才触发翻译
-  const isShiftOnly = event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey;
+  // 检查是否是单独的Shift键 (没有其他键一起按下)
+  const isShiftKeyOnly = event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && event.key === "Shift";
 
   // 检查是否满足高级翻译快捷键条件 (Shift + Ctrl)
   const isShiftCtrl = event.shiftKey && event.ctrlKey && !event.altKey && !event.metaKey;
   
-  if (isShiftOnly || isShiftCtrl) {
+  if (isShiftKeyOnly || isShiftCtrl) {
     // 防止事件冒泡和默认行为
     event.preventDefault();
     event.stopPropagation();
