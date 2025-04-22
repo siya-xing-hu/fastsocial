@@ -30,12 +30,11 @@
             class="pl-3"
           >
             <option
-              v-for="service in (config.aiServices)"
-              :key="service.id"
-              :value="service.id"
-              :disabled="!service.enabled"
+              v-for="service in serviceModelOptions"
+              :key="service.value"
+              :value="service.value"
             >
-              {{ service.name }}
+              {{ service.label }}
             </option>
           </select>
         </div>
@@ -101,12 +100,28 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted } from "vue";
+import { onMounted, computed } from "vue";
 import { config, initConfig, onInput } from "../../common/storage-config";
 
 function openOptions() {
   chrome.runtime.openOptionsPage();
 }
+
+// 计算所有可用的服务-模型组合
+const serviceModelOptions = computed(() => {
+  const options = [];
+  for (const service of config.value.aiServices) {
+    if (service.enabled && service.customModels && service.customModels.length > 0) {
+      for (const model of service.customModels) {
+        options.push({
+          value: `${service.id}:${model}`,
+          label: `${service.name}:${model}`
+        });
+      }
+    }
+  }
+  return options;
+});
 
 onMounted(async () => {
   await initConfig();

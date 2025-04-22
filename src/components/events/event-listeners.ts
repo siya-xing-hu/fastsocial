@@ -14,6 +14,8 @@ let isTranslating = false;
 // Shift键状态
 let shiftKeyTimer: ReturnType<typeof setTimeout> | null = null;
 let isShiftKeyDown = false;
+// 添加鼠标按键状态跟踪
+let isMouseButtonDown = false;
 
 /**
  * 初始化所有事件监听器
@@ -25,6 +27,10 @@ export function initEventListeners() {
   // 监听键盘按下和释放事件
   document.addEventListener("keydown", handleKeyDown);
   document.addEventListener("keyup", handleKeyUp);
+  
+  // 添加鼠标按键监听
+  document.addEventListener("mousedown", handleMouseDown);
+  document.addEventListener("mouseup", handleMouseUp);
   
   log("事件监听器初始化完成");
 }
@@ -73,11 +79,25 @@ function handleKeyDown(event: KeyboardEvent) {
 }
 
 /**
+ * 处理鼠标按下事件
+ */
+function handleMouseDown() {
+  isMouseButtonDown = true;
+}
+
+/**
+ * 处理鼠标释放事件
+ */
+function handleMouseUp() {
+  isMouseButtonDown = false;
+}
+
+/**
  * 处理键盘释放事件
  */
 function handleKeyUp(event: KeyboardEvent) {
-  // 只处理Shift键的释放
-  if (event.key === "Shift" && isShiftKeyDown) {
+  // 只处理Shift键的释放，并且确保鼠标按键没有被按下
+  if (event.key === "Shift" && isShiftKeyDown && !isMouseButtonDown) {
     // 设置一个短暂的延迟，确保不是组合键操作
     shiftKeyTimer = setTimeout(async () => {
       // 执行普通翻译

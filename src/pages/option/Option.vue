@@ -36,22 +36,21 @@
             >
             <select v-model="config.basic.aiProvider" class="form-input">
               <option
-                v-for="service in config.aiServices"
-                :key="service.id"
-                :value="service.id"
-                :disabled="!service.enabled"
+                v-for="option in serviceModelOptions"
+                :key="option.value"
+                :value="option.value"
               >
-                {{ service.name }}
+                {{ option.label }}
               </option>
             </select>
           </div>
 
           <div class="config-item">
             <label class="block text-sm font-medium text-gray-700 mb-2"
-              >默认翻译服务</label
+              >翻译服务</label
             >
             <select v-model="config.basic.translateProvider" class="form-input">
-              <option value="google">Google 翻译</option>
+              <option value="google">Google</option>
               <option value="ai">AI</option>
               <option value="deepl">DeepL</option>
             </select>
@@ -92,12 +91,6 @@
         <div class="mb-6">
           <div class="flex justify-between items-center mb-4">
             <h3 class="text-lg font-medium">已配置的服务</h3>
-            <button
-              @click="showAddService = true"
-              class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-            >
-              添加服务
-            </button>
           </div>
 
           <!-- 服务列表 -->
@@ -105,14 +98,23 @@
             <div
               v-for="service in config.aiServices"
               :key="service.id"
+              :data-service-id="service.id"
               class="bg-white p-6 rounded-lg shadow-sm border border-gray-200"
               :class="{
-                'border-blue-500': service.id === config.basic.aiProvider,
+                'border-blue-500': getSelectedProviderModel().serviceId === service.id,
               }"
             >
               <div class="flex justify-between items-start mb-4">
                 <div>
-                  <h4 class="text-lg font-medium">{{ service.name }}</h4>
+                  <input
+                    v-if="service.id === newServiceId"
+                    type="text"
+                    v-model="service.name"
+                    class="form-input"
+                    placeholder="请输入服务名称"
+                    @input="updateService(service)"
+                  />
+                  <h4 v-else class="text-lg font-medium">{{ service.name }}</h4>
                 </div>
                 <div class="flex items-center gap-2">
                   <label
@@ -177,199 +179,70 @@
 
                 <div class="config-item">
                   <label class="block text-sm font-medium text-gray-700 mb-2"
-                    >模型</label
+                    >模型列表</label
                   >
-                  <div class="space-y-2">
+                  <div class="mb-3">
                     <div class="flex gap-2">
-                      <select
-                        v-model="service.model"
+                      <input
+                        type="text"
+                        v-model="newModelName"
+                        placeholder="输入模型名称并按回车添加"
+                        @keydown.enter.prevent="addCustomModelDirectly(service)"
                         class="form-input flex-1"
-                        @change="updateService(service)"
-                      >
-                        <option
-                          v-for="model in service.customModels"
-                          :key="model"
-                          :value="model"
-                        >
-                          {{ model }}
-                        </option>
-                      </select>
-                      <button
-                        @click="
-                          showAddModel = true;
-                          currentService = service;
-                        "
-                        class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-600 transition-colors"
-                      >
-                        添加模型
-                      </button>
+                      />
                     </div>
-                    <!-- 模型列表 -->
-                    <div class="flex flex-wrap gap-2 mt-2">
-                      <div
-                        v-for="model in service.customModels"
-                        :key="model"
-                        class="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-md text-sm"
+                  </div>
+                  
+                  <!-- 模型列表 -->
+                  <div class="flex flex-wrap gap-2 mt-2">
+                    <div
+                      v-for="model in service.customModels"
+                      :key="model"
+                      :class="[
+                        'flex items-center gap-1 px-2 py-1 rounded-md text-sm',
+                        getSelectedProviderModel().model === model && 
+                        getSelectedProviderModel().serviceId === service.id ? 
+                        'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700'
+                      ]"
+                      @click="selectServiceModel(service.id, model)"
+                    >
+                      <span>{{ model }}</span>
+                      <button
+                        @click.stop="removeModel(service, model)"
+                        class="text-gray-500 hover:text-red-600 transition-colors"
                       >
-                        <span>{{ model }}</span>
-                        <button
-                          @click="removeModel(service, model)"
-                          class="text-gray-500 hover:text-red-600 transition-colors"
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          class="h-4 w-4"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
                         >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="h-4 w-4"
-                            viewBox="0 0 20 20"
-                            fill="currentColor"
-                          >
-                            <path
-                              fill-rule="evenodd"
-                              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                              clip-rule="evenodd"
-                            />
-                          </svg>
-                        </button>
-                      </div>
+                          <path
+                            fill-rule="evenodd"
+                            d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                            clip-rule="evenodd"
+                          />
+                        </svg>
+                      </button>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
+            
+            <!-- 添加服务按钮 -->
+            <button
+              @click="addEmptyService"
+              :disabled="isAddingService"
+              class="w-full py-4 flex items-center justify-center bg-gray-50 border border-dashed border-gray-300 rounded-lg hover:bg-gray-100 transition-colors text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+            </button>
           </div>
         </div>
       </section>
-
-      <!-- 添加服务对话框 -->
-      <div
-        v-if="showAddService"
-        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
-      >
-        <div class="bg-white rounded-lg p-6 w-[400px]">
-          <h3 class="text-lg font-medium mb-4">添加 AI 服务</h3>
-          <div class="space-y-4">
-            <div class="config-item">
-              <label class="block text-sm font-medium text-gray-700 mb-2"
-                >服务名称</label
-              >
-              <input
-                type="text"
-                v-model="newService.name"
-                class="form-input"
-                placeholder="请输入服务名称"
-              />
-            </div>
-            <div class="config-item">
-              <label class="block text-sm font-medium text-gray-700 mb-2"
-                >服务地址</label
-              >
-              <input
-                type="text"
-                v-model="newService.endpoint"
-                class="form-input"
-                placeholder="请输入服务地址"
-              />
-            </div>
-            <div class="config-item">
-              <label class="block text-sm font-medium text-gray-700 mb-2"
-                >API Key</label
-              >
-              <input
-                type="password"
-                v-model="newService.apiKey"
-                class="form-input"
-                placeholder="请输入 API Key"
-              />
-            </div>
-            <div class="config-item">
-              <label class="block text-sm font-medium text-gray-700 mb-2"
-                >默认模型</label
-              >
-              <input
-                type="text"
-                v-model="newService.model"
-                class="form-input"
-                placeholder="请输入默认模型名称"
-              />
-            </div>
-          </div>
-          <div class="flex justify-end gap-2 mt-6">
-            <button
-              @click="showAddService = false"
-              class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-            >
-              取消
-            </button>
-            <button
-              @click="addService"
-              class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-            >
-              确定
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 删除确认对话框 -->
-      <div
-        v-if="showDeleteConfirm"
-        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
-      >
-        <div class="bg-white rounded-lg p-6 w-[400px]">
-          <h3 class="text-lg font-medium mb-4">
-            确认删除{{ itemToDelete?.type === "service" ? "服务" : "按钮" }}
-          </h3>
-          <p class="text-gray-600 mb-6">
-            确定要删除{{
-              itemToDelete?.type === "service" ? "服务" : "按钮"
-            }}
-            "{{ itemToDelete?.item.name }}" 吗？此操作不可恢复。
-          </p>
-          <div class="flex justify-end gap-2">
-            <button
-              @click="showDeleteConfirm = false"
-              class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-            >
-              取消
-            </button>
-            <button
-              @click="confirmDelete"
-              class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
-            >
-              删除
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 添加模型对话框 -->
-      <div
-        v-if="showAddModel"
-        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
-      >
-        <div class="bg-white rounded-lg p-6 w-[400px]">
-          <h3 class="text-lg font-medium mb-4">添加自定义模型</h3>
-          <input
-            type="text"
-            v-model="newModelName"
-            placeholder="请输入模型名称"
-            class="form-input mb-4"
-          />
-          <div class="flex justify-end gap-2">
-            <button
-              @click="showAddModel = false"
-              class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-            >
-              取消
-            </button>
-            <button
-              @click="addCustomModel"
-              class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-            >
-              确定
-            </button>
-          </div>
-        </div>
-      </div>
 
       <!-- 翻译服务配置 -->
       <section v-if="currentMenu === 'translate'" class="max-w-2xl">
@@ -436,12 +309,6 @@
         <div class="mb-6">
           <div class="flex justify-between items-center mb-4">
             <h3 class="text-lg font-medium">已配置的按钮</h3>
-            <button
-              @click="showAddButton = true"
-              class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-            >
-              添加按钮
-            </button>
           </div>
 
           <!-- 按钮列表 -->
@@ -449,12 +316,21 @@
             <div
               v-for="button in config.buttons"
               :key="button.id"
+              :data-button-id="button.id"
               class="bg-white p-6 rounded-lg shadow-sm border border-gray-200"
             >
               <div class="flex justify-between items-start mb-4">
                 <div class="flex items-center gap-2">
                   <span class="text-2xl">{{ button.icon }}</span>
-                  <h4 class="text-lg font-medium">{{ button.name }}</h4>
+                  <input
+                    v-if="button.id === newButtonId"
+                    type="text"
+                    v-model="button.name"
+                    class="form-input"
+                    placeholder="请输入按钮名称"
+                    @input="updateButton(button)"
+                  />
+                  <h4 v-else class="text-lg font-medium">{{ button.name }}</h4>
                 </div>
                 <div class="flex items-center gap-2">
                   <label
@@ -543,72 +419,48 @@
                 </div>
               </div>
             </div>
+            
+            <!-- 添加按钮按钮 -->
+            <button
+              @click="addEmptyButton"
+              :disabled="isAddingButton"
+              class="w-full py-4 flex items-center justify-center bg-gray-50 border border-dashed border-gray-300 rounded-lg hover:bg-gray-100 transition-colors text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+            </button>
           </div>
         </div>
       </section>
 
-      <!-- 添加按钮对话框 -->
+      <!-- 删除确认对话框 -->
       <div
-        v-if="showAddButton"
+        v-if="showDeleteConfirm"
         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
       >
         <div class="bg-white rounded-lg p-6 w-[400px]">
-          <h3 class="text-lg font-medium mb-4">添加按钮</h3>
-          <div class="space-y-4">
-            <div class="config-item">
-              <div class="flex gap-4">
-                <div class="flex-1">
-                  <label class="block text-sm font-medium text-gray-700 mb-2"
-                    >按钮名称</label
-                  >
-                  <input
-                    type="text"
-                    v-model="newButton.name"
-                    class="form-input"
-                    placeholder="请输入按钮名称"
-                  />
-                </div>
-                <div class="flex-1">
-                  <label class="block text-sm font-medium text-gray-700 mb-2"
-                    >按钮图标</label
-                  >
-                  <div class="relative">
-                    <select v-model="newButton.icon" class="form-input">
-                      <option
-                        v-for="icon in buttonIconOptions"
-                        :key="icon.value"
-                        :value="icon.value"
-                      >
-                        {{ icon.label }}
-                      </option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="config-item">
-              <label class="block text-sm font-medium text-gray-700 mb-2"
-                >提示词</label
-              >
-              <textarea
-                v-model="newButton.prompt"
-                class="form-input min-h-[100px]"
-                placeholder="请输入提示词"
-              ></textarea>
-            </div>
-          </div>
-          <div class="flex justify-end gap-2 mt-6">
+          <h3 class="text-lg font-medium mb-4">
+            确认删除{{ itemToDelete?.type === "service" ? "服务" : "按钮" }}
+          </h3>
+          <p class="text-gray-600 mb-6">
+            确定要删除{{
+              itemToDelete?.type === "service" ? "服务" : "按钮"
+            }}
+            "{{ itemToDelete?.item.name }}" 吗？此操作不可恢复。
+          </p>
+          <div class="flex justify-end gap-2">
             <button
-              @click="showAddButton = false"
+              @click="showDeleteConfirm = false"
               class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
             >
               取消
             </button>
             <button
-              @click="addButton"
-              class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              @click="confirmDelete"
+              class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
             >
-              确定
+              删除
             </button>
           </div>
         </div>
@@ -646,35 +498,18 @@ const menuItems = computed(() => [
 ]);
 
 const currentMenu = ref("basic");
-const showAddService = ref(false);
-const showAddModel = ref(false);
+const newServiceId = ref<string | null>(null);
+const isAddingService = ref(false);
 const newModelName = ref("");
-const currentService = ref<AIServiceConfig | null>(null);
+const newButtonId = ref<string | null>(null);
+const isAddingButton = ref(false);
 const showDeleteConfirm = ref(false);
-const itemToDelete = ref<{ type: "service" | "button"; item: any } | null>(
-  null
-);
-
-// 按钮配置相关
-const showAddButton = ref(false);
+const itemToDelete = ref<{ type: "service" | "button"; item: any } | null>(null);
 
 // 新服务配置
-const newService = ref<Partial<AIServiceConfig>>({
-  name: "",
-  endpoint: "",
-  apiKey: "",
-  model: "",
-  customModels: [],
-  enabled: true,
-});
-
-// 新按钮配置
-const newButton = ref<Partial<ButtonConfig>>({
-  name: "",
-  icon: "✨",
-  prompt: "",
-  enabled: true,
-});
+interface NewServiceConfig extends Omit<AIServiceConfig, 'id'> {
+  model?: string; // 临时字段，用于初始化
+}
 
 // 获取所有按钮图标选项
 const buttonIconOptions = computed(() => {
@@ -687,60 +522,95 @@ const buttonIconOptions = computed(() => {
     }));
 });
 
-// 优化添加服务方法
-const addService = () => {
-  if (!newService.value.name || !newService.value.endpoint) {
+// 处理选中的服务和模型
+interface SelectedProviderModel {
+  serviceId: string;
+  model: string;
+}
+
+// 获取当前选择的服务和模型
+const getSelectedProviderModel = () => {
+  const [serviceId = "", model = ""] = config.value.basic.aiProvider.split(":");
+  return { serviceId, model } as SelectedProviderModel;
+};
+
+// 选择服务和模型
+const selectServiceModel = (serviceId: string, model: string) => {
+  config.value.basic.aiProvider = `${serviceId}:${model}`;
+  onInput();
+};
+
+// 直接添加自定义模型
+const addCustomModelDirectly = (service: AIServiceConfig) => {
+  if (!newModelName.value.trim()) return;
+  
+  if (!service.customModels) {
+    service.customModels = [];
+  }
+
+  // 检查是否已存在
+  if (service.customModels.includes(newModelName.value)) {
     return;
   }
 
-  const service: AIServiceConfig = {
-    id: `custom-${Date.now()}`,
-    name: newService.value.name,
-    endpoint: newService.value.endpoint,
-    apiKey: newService.value.apiKey || "",
-    model: newService.value.model || "",
-    customModels: [newService.value.model || ""],
-    enabled: true,
-  };
+  service.customModels.push(newModelName.value);
+  newModelName.value = "";
+  updateService(service);
+};
 
-  config.value.aiServices.push(service);
-  showAddService.value = false;
-  newService.value = {
+// 直接在列表添加空服务
+const addEmptyService = () => {
+  if (isAddingService.value) return;
+  
+  isAddingService.value = true;
+  const id = `custom-${Date.now()}`;
+  newServiceId.value = id;
+  
+  const service: AIServiceConfig = {
+    id: id,
     name: "",
     endpoint: "",
     apiKey: "",
-    model: "",
     customModels: [],
     enabled: true,
   };
+  
+  config.value.aiServices.push(service);
+  
+  // 设置焦点到新添加的服务（可选）
+  setTimeout(() => {
+    const newServiceElement = document.querySelector(`[data-service-id="${id}"] input`);
+    if (newServiceElement) {
+      (newServiceElement as HTMLInputElement).focus();
+    }
+  }, 100);
 };
 
-// 添加按钮方法
-const addButton = () => {
-  if (
-    !newButton.value.name ||
-    !newButton.value.icon ||
-    !newButton.value.prompt
-  ) {
-    return;
-  }
-
+// 直接添加空按钮
+const addEmptyButton = () => {
+  if (isAddingButton.value) return;
+  
+  isAddingButton.value = true;
+  const id = `custom-${Date.now()}`;
+  newButtonId.value = id;
+  
   const button: ButtonConfig = {
-    id: `custom-${Date.now()}`,
-    name: newButton.value.name,
-    icon: newButton.value.icon,
-    prompt: newButton.value.prompt,
-    enabled: true,
-  };
-
-  config.value.buttons.push(button);
-  showAddButton.value = false;
-  newButton.value = {
+    id: id,
     name: "",
     icon: "✨",
     prompt: "",
     enabled: true,
   };
+  
+  config.value.buttons.push(button);
+  
+  // 设置焦点到新添加的按钮（可选）
+  setTimeout(() => {
+    const newButtonElement = document.querySelector(`[data-button-id="${id}"] input`);
+    if (newButtonElement) {
+      (newButtonElement as HTMLInputElement).focus();
+    }
+  }, 100);
 };
 
 // 优化移除服务方法
@@ -755,24 +625,31 @@ const removeButton = (button: ButtonConfig) => {
   showDeleteConfirm.value = true;
 };
 
-// 确认删除方法
+// 确认删除
 const confirmDelete = () => {
   if (!itemToDelete.value) return;
-
+  
   if (itemToDelete.value.type === "service") {
     const service = itemToDelete.value.item as AIServiceConfig;
     const index = config.value.aiServices.findIndex((s) => s.id === service.id);
     if (index > -1) {
       // 如果删除的是当前选中的服务，切换到第一个可用的服务
-      if (service.id === config.value.basic.aiProvider) {
+      const selected = getSelectedProviderModel();
+      if (selected.serviceId === service.id) {
         const firstEnabled = config.value.aiServices.find(
           (s) => s.enabled && s.id !== service.id
         );
-        if (firstEnabled) {
-          config.value.basic.aiProvider = firstEnabled.id;
+        if (firstEnabled && firstEnabled.customModels && firstEnabled.customModels.length > 0) {
+          selectServiceModel(firstEnabled.id, firstEnabled.customModels[0]);
         }
       }
       config.value.aiServices.splice(index, 1);
+    }
+    
+    // 重置添加状态，以防删除的是正在添加的服务
+    if (service.id === newServiceId.value) {
+      isAddingService.value = false;
+      newServiceId.value = null;
     }
   } else if (itemToDelete.value.type === "button") {
     const button = itemToDelete.value.item as ButtonConfig;
@@ -780,8 +657,14 @@ const confirmDelete = () => {
     if (index > -1) {
       config.value.buttons.splice(index, 1);
     }
+    
+    // 重置添加状态，以防删除的是正在添加的按钮
+    if (button.id === newButtonId.value) {
+      isAddingButton.value = false;
+      newButtonId.value = null;
+    }
   }
-
+  
   showDeleteConfirm.value = false;
   itemToDelete.value = null;
 };
@@ -793,9 +676,12 @@ const removeModel = (service: AIServiceConfig, model: string) => {
   const index = service.customModels.indexOf(model);
   if (index > -1) {
     service.customModels.splice(index, 1);
-    // 如果删除的是当前选中的模型，切换到第一个可用的模型
-    if (model === service.model && service.customModels.length > 0) {
-      service.model = service.customModels[0];
+    
+    // 检查当前选择的是否是被删除的模型
+    const selected = getSelectedProviderModel();
+    if (selected.serviceId === service.id && selected.model === model && service.customModels.length > 0) {
+      // 如果是，选择第一个可用模型
+      selectServiceModel(service.id, service.customModels[0]);
     }
   }
 };
@@ -816,26 +702,6 @@ const updateButton = (button: ButtonConfig) => {
   }
 };
 
-// 添加自定义模型
-const addCustomModel = () => {
-  if (!newModelName.value.trim() || !currentService.value) {
-    return;
-  }
-
-  if (!currentService.value.customModels) {
-    currentService.value.customModels = [];
-  }
-
-  if (currentService.value.customModels.includes(newModelName.value)) {
-    return;
-  }
-
-  currentService.value.customModels.push(newModelName.value);
-  newModelName.value = "";
-  showAddModel.value = false;
-  currentService.value = null;
-};
-
 // 优化保存配置方法
 const saveConfig = async () => {
   try {
@@ -846,6 +712,22 @@ const saveConfig = async () => {
     // 可以添加保存失败的提示
   }
 };
+
+// 计算所有可用的服务-模型组合
+const serviceModelOptions = computed(() => {
+  const options = [];
+  for (const service of config.value.aiServices) {
+    if (service.enabled && service.customModels && service.customModels.length > 0) {
+      for (const model of service.customModels) {
+        options.push({
+          value: `${service.id}:${model}`,
+          label: `${service.name}:${model}`
+        });
+      }
+    }
+  }
+  return options;
+});
 
 onMounted(async () => {
   try {

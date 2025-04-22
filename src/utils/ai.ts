@@ -1,12 +1,24 @@
 import { log_info } from "../common/logging";
 import { AIServiceConfig, config } from "../common/storage-config";
 
-// 获取当前启用的AI服务配置
-const getCurrentAIService = (): AIServiceConfig | null => {
-  const currentService = config.value.aiServices.find((service: AIServiceConfig) =>
-    service.id === config.value.basic.aiProvider
+// 解析当前选择的服务ID和模型
+const parseAIProvider = () => {
+  const [serviceId = "", model = ""] = config.value.basic.aiProvider.split(":");
+  return { serviceId, model };
+};
+
+// 获取当前启用的AI服务配置和模型
+const getCurrentAIService = (): { service: AIServiceConfig, model: string } | null => {
+  const { serviceId, model } = parseAIProvider();
+  const currentService = config.value.aiServices.find(
+    (service: AIServiceConfig) => service.id === serviceId
   );
-  return currentService || null;
+  
+  if (!currentService || !model) {
+    return null;
+  }
+  
+  return { service: currentService, model };
 };
 
 // 执行GPT提示
@@ -14,18 +26,19 @@ export const execGptPrompt = async (
   prompt: string,
   text: string,
 ): Promise<string> => {
-  const service = getCurrentAIService();
-  if (!service) {
+  const serviceInfo = getCurrentAIService();
+  if (!serviceInfo) {
     throw new Error("No AI service configured");
   }
 
-  return aiCreate(prompt, text, service);
+  return aiCreate(prompt, text, serviceInfo.service, serviceInfo.model);
 };
 
 const aiCreate = async (
   prompt: string,
   text: string,
   service: AIServiceConfig,
+  model: string,
 ): Promise<string> => {
   if (!service.apiKey) {
     throw new Error("API key is required");
@@ -36,13 +49,13 @@ const aiCreate = async (
     "Authorization": `Bearer ${service.apiKey}`,
   };
 
-  log_info(`aiCreate, ${service.endpoint}, ${service.model}, ${prompt}, ${text}`);
+  log_info(`aiCreate, ${service.endpoint}, ${model}, ${prompt}, ${text}`);
 
   const response = await fetch(service.endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify({
-      model: service.model,
+      model: model,
       messages: [
         {
           role: "system",

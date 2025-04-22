@@ -37,7 +37,6 @@ export interface AIServiceConfig {
   name: string;
   endpoint: string;
   apiKey?: string;
-  model: string;
   customModels?: string[];
   enabled: boolean;
 }
@@ -69,7 +68,7 @@ interface Config {
 // 默认配置
 const DEFAULT_CONFIG: Config = {
   basic: {
-    aiProvider: "ollama-default",
+    aiProvider: "ollama-default:llama3", // 存储格式改为 "serviceId:modelName"
     translateProvider: TranslateChannelEnum.GOOGLE,
     targetLang: "zh-CN",
     autoTranslate: true,
@@ -80,7 +79,6 @@ const DEFAULT_CONFIG: Config = {
       name: "Ollama",
       endpoint: "http://localhost:11434/v1/chat/completions",
       apiKey: "ollama",
-      model: "llama3",
       customModels: ["llama3"],
       enabled: true,
     },
@@ -90,7 +88,6 @@ const DEFAULT_CONFIG: Config = {
       endpoint:
         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       apiKey: "",
-      model: "gemini-2.0-flash",
       customModels: ["gemini-2.0-flash"],
       enabled: true,
     },
@@ -99,7 +96,6 @@ const DEFAULT_CONFIG: Config = {
       name: "OpenAI",
       endpoint: "https://api.openai.com/v1/chat/completions",
       apiKey: "",
-      model: "gpt-4o-mini",
       customModels: ["gpt-3.5-turbo", "gpt-4o-mini"],
       enabled: false,
     },
