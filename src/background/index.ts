@@ -94,7 +94,7 @@ export function init() {
           retry(
             async () => {
               return Promise.resolve(
-                await execGptPrompt(prompt.prompt.replace("${replyContent}", data.content).replace("${userContent}", data.keywords || "")),
+                await execGptPrompt(prompt.prompt.replace("{replyContent}", data.content).replace("{userContent}", data.keywords || "")),
               );
             },
             1,

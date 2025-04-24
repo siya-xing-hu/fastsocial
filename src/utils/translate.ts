@@ -63,14 +63,14 @@ export async function translate(channel: TranslateChannelEnum, text: string, is_
     case TranslateChannelEnum.AI:
       let prompt = config.value.translationService.translatePrompt;
       if (!prompt) {
-        prompt = "请将文本内容\n''' ${userContent} \n'''翻译成${targetLang}。翻译要求：1. 保持专业术语的准确性，对于专业术语可以选择不翻译；2. 保持原文的语气和风格；3. 确保翻译的流畅性和自然度。";
+        prompt = "请将文本内容\n'''{userContent} \n'''翻译成{targetLang}。翻译要求：1. 保持专业术语的准确性，对于专业术语可以选择不翻译；2. 保持原文的语气和风格；3. 确保翻译的流畅性和自然度。";
       }
       if (is_advanced) {
         prompt += "讲解不常用词汇和特殊用法，以供用户理解。";
       } else {
         prompt += "请直接输出翻译结果，不要过度解读。";
       }
-      return await execGptPrompt(prompt.replace("${targetLang}", config.value.basic.targetLang).replace("${userContent}", text));
+      return await execGptPrompt(prompt.replace("{targetLang}", config.value.basic.targetLang).replace("{userContent}", text));
     default:
       throw new Error(`Unsupported translation provider: ${channel}`);
   }
