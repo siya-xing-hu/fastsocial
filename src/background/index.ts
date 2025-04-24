@@ -5,7 +5,7 @@ import {
   RuntimeMessageResponse,
   RuntimeMessageTypeEnum,
 } from "../common/runtime-message";
-import { initConfig } from "../common/storage-config";
+import { config, initConfig } from "../common/storage-config";
 import {
   ConfigUpdateTabMessage,
   sendTabMessage,
@@ -81,10 +81,20 @@ export function init() {
           break;
         case RuntimeMessageTypeEnum.AI_GENARATE:
           const data: AIGenarateData = message.data;
+
+          const prompt = config.value.prompts[data.scene].find(
+            (prompt) => prompt.id === data.id,
+          );
+
+          if (!prompt) {
+            sendResponse({ is_ok: false, error: "未找到指定的按钮配置" });
+            break;
+          }
+
           retry(
             async () => {
               return Promise.resolve(
-                await execGptPrompt(data.button.prompt, data.content),
+                await execGptPrompt(prompt.prompt.replace("${replyContent}", data.content).replace("${userContent}", data.keywords || "")),
               );
             },
             1,

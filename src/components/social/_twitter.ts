@@ -5,19 +5,19 @@ import {
   sendRuntimeMessage,
 } from "../../common/runtime-message";
 import {
-  ButtonConfig,
   config,
   TranslateChannelEnum,
+  PromptConfig,
 } from "../../common/storage-config";
 import { setInputText } from "../../utils/kit";
 import { execObserver } from "../../utils/mutationObserver";
 import { translateContent } from "../translate/text-translator";
 import {
-  buttonList,
-  ButtonLocationEnum,
-  createButtonContainer,
+  promptList,
+  PromptLocationEnum,
+  createPromptContainer,
   HandlerParams,
-} from "../ui/button";
+} from "../ui/prompt";
 import { createDialogContainer } from "../ui/dialog";
 
 enum XUrlEnum {
@@ -119,11 +119,6 @@ export async function ttTwitterInit(url: string): Promise<void> {
         return await ttTwitterPost();
       });
       break;
-    case XUrlEnum.MESSAGES:
-      execObserver(document.body, async () => {
-        return await ttTwitterDM();
-      });
-      break;
     default:
       break;
   }
@@ -154,24 +149,24 @@ async function ttTwitterHome(): Promise<boolean> {
     return false;
   }
 
-  if (toolBarParentWrapper.getAttribute("tt-button-is-done") === "true") {
+  if (toolBarParentWrapper.getAttribute("tt-prompt-is-done") === "true") {
     return true;
   }
 
-  createButtonContainer(
+  createPromptContainer(
     toolBarParentWrapper as HTMLElement,
-    ButtonLocationEnum.Previous,
+    PromptLocationEnum.Previous,
   );
 
-  // 将配置的按钮添加到buttonList
-  buttonList.value.push(
-    ...Object.values(config.value.buttons)
-      .filter((btn) => btn.enabled)
-      .map((btn) => ({
-        ...btn,
+  // 添加POST场景按钮
+  promptList.value.push(
+    ...config.value.prompts.post
+      .filter((p) => p.enabled)
+      .map((p) => ({
+        ...p,
         params: { data: { mainWrapper } },
         handler: generateHandle,
-      })),
+      }))
   );
 
   return true;
@@ -190,13 +185,13 @@ async function ttTwitterPost(): Promise<boolean> {
     return false;
   }
 
-  if (toolBarParentWrapper.getAttribute("tt-button-is-done") === "true") {
+  if (toolBarParentWrapper.getAttribute("tt-prompt-is-done") === "true") {
     return true;
   }
 
-  createButtonContainer(
+  createPromptContainer(
     toolBarParentWrapper as HTMLElement,
-    ButtonLocationEnum.Previous,
+    PromptLocationEnum.Previous,
   );
 
   const replayTweetTextWrapper = mainWrapper?.querySelector(
@@ -211,65 +206,33 @@ async function ttTwitterPost(): Promise<boolean> {
     }
 
     // 从配置中获取回复按钮
-    buttonList.value.push(
-      ...Object.values(config.value.buttons)
-        .filter((btn) => btn.enabled)
-        .map((btn) => ({
-          ...btn,
+    promptList.value.push(
+      ...config.value.prompts.reply
+        .filter((p) => p.enabled)
+        .map((p) => ({
+          ...p,
           params: { data: { mainWrapper, replayContent } },
           handler: generateHandle,
-        })),
+        }))
     );
   } else {
     // 发推场景
-    buttonList.value.push(
-      ...Object.values(config.value.buttons)
-        .filter((btn) => btn.enabled)
-        .map((btn) => ({
-          ...btn,
+    promptList.value.push(
+      ...config.value.prompts.post
+        .filter((p) => p.enabled)
+        .map((p) => ({
+          ...p,
           params: { data: { mainWrapper } },
           handler: generateHandle,
-        })),
+        }))
     );
   }
-
-  return true;
-}
-
-async function ttTwitterDM(): Promise<boolean> {
-  const dmWrapper = document.querySelector(
-    "main[role=main] aside[role=complementary] button[data-testid=dmComposerSendButton]",
-  );
-
-  if (!dmWrapper) {
-    return false;
-  }
-
-  if (dmWrapper.getAttribute("tt-button-is-done") === "true") {
-    return true;
-  }
-
-  createButtonContainer(
-    dmWrapper as HTMLElement,
-    ButtonLocationEnum.ParentPrevious,
-  );
-
-  // 从配置中获取DM按钮
-  buttonList.value.push(
-    ...Object.values(config.value.buttons)
-      .filter((btn) => btn.enabled)
-      .map((btn) => ({
-        ...btn,
-        params: { data: { dmWrapper } },
-        handler: dmGenerateHandle,
-      })),
-  );
 
   return true;
 }
 
 async function generateHandle(
-  button: ButtonConfig,
+  prompt: PromptConfig,
   params: HandlerParams,
 ): Promise<void> {
   const { mainWrapper, replayContent } = params.data;
@@ -294,7 +257,9 @@ async function generateHandle(
     type: RuntimeMessageTypeEnum.AI_GENARATE,
     data: {
       content: sourceContent,
-      button: button, // 传递完整的按钮配置
+      scene: replayContent ? "reply" : "post",
+      id: prompt.id,
+      keywords: tweetTextareaWrapper.textContent,
     },
   };
 
@@ -309,51 +274,6 @@ async function generateHandle(
     generateText,
     () => {
       setInputText(tweetTextareaWrapper, generateText);
-    },
-    () => {
-      log("Operation cancelled.");
-    },
-  );
-}
-
-async function dmGenerateHandle(
-  button: ButtonConfig,
-  params: HandlerParams,
-): Promise<void> {
-  const { dmWrapper } = params.data;
-  if (!dmWrapper) {
-    return;
-  }
-
-  const dmTextareaWrapper = dmWrapper.parentElement.querySelector(
-    "div[data-testid=dmComposerTextInput]",
-  ) as HTMLElement;
-
-  if (!dmTextareaWrapper) {
-    return;
-  }
-  const sourceContent = dmTextareaWrapper.textContent || "";
-  if (sourceContent === "") {
-    return;
-  }
-  const message: AIGenarateRuntimeMessage = {
-    type: RuntimeMessageTypeEnum.AI_GENARATE,
-    data: {
-      content: sourceContent,
-      button: button, // 传递完整的按钮配置
-    },
-  };
-  const response = await sendRuntimeMessage(message);
-  if (!response.is_ok) {
-    log_error("AI generate failed", response.error);
-    return;
-  }
-
-  const generateText = response.data;
-  createDialogContainer(
-    generateText,
-    () => {
-      setInputText(dmTextareaWrapper, generateText);
     },
     () => {
       log("Operation cancelled.");

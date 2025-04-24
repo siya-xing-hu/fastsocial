@@ -2,7 +2,7 @@
  * @fileoverview 用于 chrome.runtime.sendMessage 的统一消息结构
  */
 import { log } from "./logging";
-import { ButtonConfig, TranslateChannelEnum } from "./storage-config";
+import { PromptScenes, TranslateChannelEnum } from "./storage-config";
 
 // 用于 chrome.runtime.sendMessage 的统一消息结构
 export enum RuntimeMessageTypeEnum {
@@ -37,8 +37,10 @@ export interface AIGenarateRuntimeMessage {
 }
 
 export interface AIGenarateData {
+  scene: PromptScenes;
+  id: string;
   content: string;
-  button: ButtonConfig;
+  keywords?: string | null;
 }
 
 export interface ContentScriptReadyMessage {

@@ -1,5 +1,5 @@
 import { log_info } from "../common/logging";
-import { AIServiceConfig, config } from "../common/storage-config";
+import { AIServiceConfig, config, getServiceApiKey } from "../common/storage-config";
 
 // 解析当前选择的服务ID和模型
 const parseAIProvider = () => {
@@ -22,34 +22,25 @@ const getCurrentAIService = (): { service: AIServiceConfig, model: string } | nu
 };
 
 // 执行GPT提示
-export const execGptPrompt = async (
-  prompt: string,
-  text: string,
-): Promise<string> => {
+export const execGptPrompt = async (userContent: string): Promise<string> => {
   const serviceInfo = getCurrentAIService();
   if (!serviceInfo) {
     throw new Error("No AI service configured");
   }
 
-  return aiCreate(prompt, text, serviceInfo.service, serviceInfo.model);
-};
+  const { service, model } = serviceInfo;
+  const apiKey = getServiceApiKey(service.id);
 
-const aiCreate = async (
-  prompt: string,
-  text: string,
-  service: AIServiceConfig,
-  model: string,
-): Promise<string> => {
-  if (!service.apiKey) {
+  if (!apiKey) {
     throw new Error("API key is required");
   }
 
   const headers: HeadersInit = {
     "Content-Type": "application/json",
-    "Authorization": `Bearer ${service.apiKey}`,
+    "Authorization": `Bearer ${apiKey}`,
   };
 
-  log_info(`aiCreate, ${service.endpoint}, ${model}, ${prompt}, ${text}`);
+  log_info(`aiCreate, ${service.endpoint}, ${model}, ${userContent}`);
 
   const response = await fetch(service.endpoint, {
     method: "POST",
@@ -59,11 +50,11 @@ const aiCreate = async (
       messages: [
         {
           role: "system",
-          content: prompt,
+          content: "You are a helpful assistant.",
         },
         {
           role: "user",
-          content: text,
+          content: userContent,
         },
       ],
       temperature: 0.7,

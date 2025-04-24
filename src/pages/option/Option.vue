@@ -170,10 +170,10 @@
                   >
                   <input
                     type="password"
-                    v-model="service.apiKey"
+                    :value="getServiceApiKey(service.id)"
+                    @input="(e: Event) => setServiceApiKey(service.id, (e.target as HTMLInputElement).value)"
                     class="form-input"
                     placeholder="请输入 API Key"
-                    @input="updateService(service)"
                   />
                 </div>
 
@@ -264,8 +264,7 @@
                 placeholder="请输入翻译提示词，可以使用 ${targetLang} 变量表示目标语言"
               ></textarea>
               <p class="mt-1 text-sm text-gray-500">
-                提示：可以使用 ${targetLang}
-                变量来表示目标语言，例如：请将以下文本翻译成${targetLang}
+                提示：可以使用 ${targetLang} 变量来表示目标语言
               </p>
             </div>
           </div>
@@ -283,7 +282,8 @@
               >
               <input
                 type="password"
-                v-model="config.translationService.deepl.apiKey"
+                :value="getDeeplApiKey()"
+                @input="(e: Event) => setDeeplApiKey((e.target as HTMLInputElement).value)"
                 class="form-input"
               />
               <p class="mt-1 text-sm text-gray-500">
@@ -301,36 +301,79 @@
         </div>
       </section>
 
-      <!-- 按钮配置部分 -->
-      <section v-if="currentMenu === 'buttons'" class="max-w-2xl">
-        <h2 class="text-xl font-medium mb-6">按钮配置</h2>
+      <!-- Prompt 列表部分 -->
+      <section v-if="currentMenu === 'prompts'" class="max-w-2xl">
+        <h2 class="text-xl font-medium mb-6">Prompt 列表</h2>
+
+        <!-- 场景切换标签 -->
+        <div class="mb-6">
+          <div class="border-b border-gray-200">
+            <nav class="flex -mb-px">
+              <button
+                v-for="scene in promptScenes"
+                :key="scene"
+                @click="currentPromptScene = scene"
+                class="py-4 px-6 font-medium text-sm border-b-2 whitespace-nowrap"
+                :class="[
+                  currentPromptScene === scene
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ]"
+              >
+                {{ getSceneLabel(scene) }}
+              </button>
+            </nav>
+          </div>
+        </div>
 
         <!-- 按钮列表 -->
         <div class="mb-6">
           <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-medium">已配置的按钮</h3>
+            <h3 class="text-lg font-medium">{{ getSceneLabel(currentPromptScene) }}配置</h3>
+          </div>
+
+          <!-- 当前场景说明 -->
+          <div class="bg-gray-50 p-4 rounded-lg mb-4 text-sm text-gray-700">
+            <p v-if="currentPromptScene === 'post'">
+              <strong>内容生成场景：</strong>结合用户输入的内容生成结果。
+              <p class="mt-1 text-sm text-gray-500">
+                提示：可以使用 ${userContent} 变量来表示用户输入的内容。
+              </p>
+            </p>
+            <p v-else-if="currentPromptScene === 'reply'">
+              <strong>内容回复场景：</strong>根据想要回复的内容结合用户输入的内容生成结果。
+              <p class="mt-1 text-sm text-gray-500">
+                提示：可以使用 ${replyContent} 变量来表示想要回复的内容，${userContent} 变量来表示用户输入的内容。
+              </p>
+            </p>
+            <p v-else>
+              <strong>通用场景：</strong>通过快捷键（Command+Shift+P）打开工具面板，输入内容后选择按钮生成内容。
+              <p class="mt-1 text-sm text-gray-500">
+                提示：可以使用 ${userContent} 变量来表示用户输入的内容。
+              </p>
+            </p>
           </div>
 
           <!-- 按钮列表 -->
           <div class="space-y-4">
             <div
-              v-for="button in config.buttons"
-              :key="button.id"
-              :data-button-id="button.id"
+              v-for="prompt in config.prompts[currentPromptScene]"
+              :key="prompt.id"
+              :data-prompt-id="prompt.id"
               class="bg-white p-6 rounded-lg shadow-sm border border-gray-200"
             >
               <div class="flex justify-between items-start mb-4">
                 <div class="flex items-center gap-2">
-                  <span class="text-2xl">{{ button.icon }}</span>
+                  <span class="text-2xl">{{ prompt.icon }}</span>
                   <input
-                    v-if="button.id === newButtonId"
+                    v-if="prompt.id === newPromptId"
                     type="text"
-                    v-model="button.name"
+                    v-model="prompt.name"
                     class="form-input"
                     placeholder="请输入按钮名称"
-                    @input="updateButton(button)"
+                    @input="updatePrompt(prompt)"
                   />
-                  <h4 v-else class="text-lg font-medium">{{ button.name }}</h4>
+                  <h4 v-else class="text-lg font-medium">{{ prompt.name }}</h4>
                 </div>
                 <div class="flex items-center gap-2">
                   <label
@@ -338,7 +381,7 @@
                   >
                     <input
                       type="checkbox"
-                      v-model="button.enabled"
+                      v-model="prompt.enabled"
                       class="sr-only peer"
                     />
                     <div
@@ -346,7 +389,7 @@
                     ></div>
                   </label>
                   <button
-                    @click="removeButton(button)"
+                    @click="removePrompt(prompt)"
                     class="p-2 text-gray-500 hover:text-red-600 transition-colors"
                   >
                     <svg
@@ -376,10 +419,10 @@
                       >
                       <input
                         type="text"
-                        v-model="button.name"
+                        v-model="prompt.name"
                         class="form-input"
                         placeholder="请输入按钮名称"
-                        @input="updateButton(button)"
+                        @input="updatePrompt(prompt)"
                       />
                     </div>
                     <div class="flex-1">
@@ -389,12 +432,12 @@
                       >
                       <div class="relative">
                         <select
-                          v-model="button.icon"
+                          v-model="prompt.icon"
                           class="form-input"
-                          @change="updateButton(button)"
+                          @change="updatePrompt(prompt)"
                         >
                           <option
-                            v-for="icon in buttonIconOptions"
+                            v-for="icon in iconOptions"
                             :key="icon.value"
                             :value="icon.value"
                           >
@@ -411,10 +454,10 @@
                     >提示词</label
                   >
                   <textarea
-                    v-model="button.prompt"
-                    class="form-input min-h-[100px]"
+                    v-model="prompt.prompt"
+                    class="form-input min-h-[120px]"
                     placeholder="请输入提示词"
-                    @input="updateButton(button)"
+                    @input="updatePrompt(prompt)"
                   ></textarea>
                 </div>
               </div>
@@ -422,8 +465,8 @@
             
             <!-- 添加按钮按钮 -->
             <button
-              @click="addEmptyButton"
-              :disabled="isAddingButton"
+              @click="() => addEmptyPrompt(currentPromptScene)"
+              :disabled="isAddingPrompt"
               class="w-full py-4 flex items-center justify-center bg-gray-50 border border-dashed border-gray-300 rounded-lg hover:bg-gray-100 transition-colors text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -469,7 +512,7 @@
       <!-- 保存按钮 -->
       <div class="fixed bottom-8 right-8">
         <button
-          @click="saveConfig"
+          @click="saveConfiguration"
           class="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm transition-all transform active:scale-95"
         >
           保存配置
@@ -480,13 +523,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
-import { config, initConfig, onInput } from "../../common/storage-config";
 import {
+  config,
+  onInput,
+  initConfig,
+  promptScenes,
+  IconEnum,
+  PromptScenes,
+  type PromptConfig,
   type AIServiceConfig,
-  ButtonIconEnum,
+  TranslateChannelEnum,
+  apiKeys,
+  saveApiKeys,
+  getServiceApiKey,
+  setServiceApiKey,
+  getDeeplApiKey,
+  setDeeplApiKey
 } from "../../common/storage-config";
-import { type ButtonConfig } from "../../common/storage-config";
+import { ref, computed, onMounted, nextTick } from "vue";
 import { log_error } from "../../common/logging";
 
 // 使用 computed 优化菜单项
@@ -494,27 +548,23 @@ const menuItems = computed(() => [
   { key: "basic", label: "基础配置" },
   { key: "ai", label: "AI 服务" },
   { key: "translate", label: "翻译服务" },
-  { key: "buttons", label: "按钮配置" },
+  { key: "prompts", label: "Prompt 列表" },
 ]);
 
 const currentMenu = ref("basic");
+const currentPromptScene = ref<PromptScenes>('post'); // 更精确的类型
 const newServiceId = ref<string | null>(null);
 const isAddingService = ref(false);
 const newModelName = ref("");
-const newButtonId = ref<string | null>(null);
-const isAddingButton = ref(false);
+const newPromptId = ref<string | null>(null);
+const isAddingPrompt = ref(false);
 const showDeleteConfirm = ref(false);
-const itemToDelete = ref<{ type: "service" | "button"; item: any } | null>(null);
-
-// 新服务配置
-interface NewServiceConfig extends Omit<AIServiceConfig, 'id'> {
-  model?: string; // 临时字段，用于初始化
-}
+const itemToDelete = ref<{ type: "service" | "prompt"; item: any; scene?: PromptScenes } | null>(null);
 
 // 获取所有按钮图标选项
-const buttonIconOptions = computed(() => {
+const iconOptions = computed(() => {
   // 过滤掉数字索引，只保留实际的图标值
-  return Object.values(ButtonIconEnum)
+  return Object.values(IconEnum)
     .filter((value) => typeof value === "string")
     .map((icon) => ({
       value: icon,
@@ -570,12 +620,14 @@ const addEmptyService = () => {
     id: id,
     name: "",
     endpoint: "",
-    apiKey: "",
     customModels: [],
     enabled: true,
   };
   
   config.value.aiServices.push(service);
+  
+  // 初始设置API密钥为空
+  setServiceApiKey(id, "");
   
   // 设置焦点到新添加的服务（可选）
   setTimeout(() => {
@@ -585,16 +637,15 @@ const addEmptyService = () => {
     }
   }, 100);
 };
-
 // 直接添加空按钮
-const addEmptyButton = () => {
-  if (isAddingButton.value) return;
+const addEmptyPrompt = (scene: PromptScenes) => {
+  if (isAddingPrompt.value) return;
   
-  isAddingButton.value = true;
-  const id = `custom-${Date.now()}`;
-  newButtonId.value = id;
+  isAddingPrompt.value = true;
+  const id = `${scene}-${Date.now()}`;
+  newPromptId.value = id;
   
-  const button: ButtonConfig = {
+  const prompt: PromptConfig = {
     id: id,
     name: "",
     icon: "✨",
@@ -602,13 +653,13 @@ const addEmptyButton = () => {
     enabled: true,
   };
   
-  config.value.buttons.push(button);
+  config.value.prompts[scene].push(prompt);
   
   // 设置焦点到新添加的按钮（可选）
   setTimeout(() => {
-    const newButtonElement = document.querySelector(`[data-button-id="${id}"] input`);
-    if (newButtonElement) {
-      (newButtonElement as HTMLInputElement).focus();
+    const newPromptElement = document.querySelector(`[data-prompt-id="${id}"] input`);
+    if (newPromptElement) {
+      (newPromptElement as HTMLInputElement).focus();
     }
   }, 100);
 };
@@ -620,8 +671,23 @@ const removeService = (service: AIServiceConfig) => {
 };
 
 // 移除按钮方法
-const removeButton = (button: ButtonConfig) => {
-  itemToDelete.value = { type: "button", item: button };
+const removePrompt = (prompt: PromptConfig) => {
+  // 找出按钮所在的场景
+  let scene: PromptScenes | undefined;
+  for (const s of promptScenes) {
+    if (config.value.prompts[s].some(b => b.id === prompt.id)) {
+      scene = s;
+      break;
+    }
+  }
+  
+  if (!scene) return;
+  
+  itemToDelete.value = { 
+    type: "prompt", 
+    item: prompt,
+    scene
+  };
   showDeleteConfirm.value = true;
 };
 
@@ -651,17 +717,22 @@ const confirmDelete = () => {
       isAddingService.value = false;
       newServiceId.value = null;
     }
-  } else if (itemToDelete.value.type === "button") {
-    const button = itemToDelete.value.item as ButtonConfig;
-    const index = config.value.buttons.findIndex((b) => b.id === button.id);
-    if (index > -1) {
-      config.value.buttons.splice(index, 1);
-    }
+  } else if (itemToDelete.value.type === "prompt") {
+    const prompt = itemToDelete.value.item as PromptConfig;
+    const scene = itemToDelete.value.scene as PromptScenes | undefined;
     
-    // 重置添加状态，以防删除的是正在添加的按钮
-    if (button.id === newButtonId.value) {
-      isAddingButton.value = false;
-      newButtonId.value = null;
+    if (scene) {
+      const index = config.value.prompts[scene].findIndex((b) => b.id === prompt.id);
+      
+      if (index > -1) {
+        config.value.prompts[scene].splice(index, 1);
+      }
+      
+      // 重置添加状态，以防删除的是正在添加的按钮
+      if (prompt.id === newPromptId.value) {
+        isAddingPrompt.value = false;
+        newPromptId.value = null;
+      }
     }
   }
   
@@ -695,15 +766,18 @@ const updateService = (service: AIServiceConfig) => {
 };
 
 // 更新按钮配置
-const updateButton = (button: ButtonConfig) => {
-  const index = config.value.buttons.findIndex((b) => b.id === button.id);
-  if (index !== -1) {
-    config.value.buttons[index] = { ...button };
+const updatePrompt = (prompt: PromptConfig) => {
+  for (const scene of promptScenes) {
+    const index = config.value.prompts[scene].findIndex((b) => b.id === prompt.id);
+    if (index !== -1) {
+      config.value.prompts[scene][index] = { ...prompt };
+      break;
+    }
   }
 };
 
 // 优化保存配置方法
-const saveConfig = async () => {
+const saveConfiguration = async () => {
   try {
     onInput();
     // 可以添加保存成功的提示
@@ -729,6 +803,20 @@ const serviceModelOptions = computed(() => {
   return options;
 });
 
+// 获取场景的中文名称
+function getSceneLabel(scene: string): string {
+  switch (scene) {
+    case 'post':
+      return "生成场景";
+    case 'reply':
+      return "回复场景";
+    case 'common':
+      return "通用场景";
+    default:
+      return String(scene);
+  }
+}
+
 onMounted(async () => {
   try {
     await initConfig();
@@ -736,15 +824,24 @@ onMounted(async () => {
     if (!Array.isArray(config.value.aiServices)) {
       config.value.aiServices = [];
     }
-    // 确保 buttons 是数组
-    if (!Array.isArray(config.value.buttons)) {
-      config.value.buttons = [];
+    
+    // 确保按钮配置有正确的结构
+    const configPrompts = config.value.prompts as any;
+    if (!configPrompts || typeof configPrompts !== 'object') {
+      config.value.prompts = { post: [], reply: [], common: [] };
+    } else {
+      // 确保每个场景都有正确的数组
+      for (const scene of promptScenes) {
+        if (!Array.isArray(configPrompts[scene])) {
+          configPrompts[scene] = [];
+        }
+      }
     }
   } catch (error) {
     log_error("初始化配置失败:", error);
     // 确保即使初始化失败也有默认值
     config.value.aiServices = [];
-    config.value.buttons = [];
+    config.value.prompts = { post: [], reply: [], common: [] };
   }
 });
 </script>

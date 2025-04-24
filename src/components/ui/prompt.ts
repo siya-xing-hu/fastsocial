@@ -1,17 +1,17 @@
 import { createApp, ref } from "vue";
-import Button from "./Button.vue";
-import { ButtonConfig } from '../../common/storage-config';
+import Button from "./Prompt.vue";
+import { PromptConfig } from '../../common/storage-config';
 
 export interface HandlerParams {
   data: any;
 }
 
-export interface ButtonData extends ButtonConfig {
-  handler: (button: ButtonConfig, params: HandlerParams) => void | Promise<void>;
+export interface PromptData extends PromptConfig {
+  handler: (prompt: PromptConfig, params: HandlerParams) => void | Promise<void>;
   params: HandlerParams;
 }
 
-export enum ButtonLocationEnum {
+export enum PromptLocationEnum {
   // 上一个
   Previous = "previous",
   // 父级上一个
@@ -24,26 +24,26 @@ export enum ButtonLocationEnum {
   Inside = "inside",
 }
 
-export const buttonList = ref<ButtonData[]>([]);
+export const promptList = ref<PromptData[]>([]);
 
 // 创建按钮区域
-export function createButtonContainer(
+export function createPromptContainer(
   targetWrapper: HTMLElement,
-  buttonLocation: ButtonLocationEnum,
+  promptLocation: PromptLocationEnum,
 ): void {
-  targetWrapper.setAttribute("tt-button-is-done", "true");
+  targetWrapper.setAttribute("tt-prompt-is-done", "true");
 
   const div = document.createElement("div");
   div.style.textOverflow = "unset";
-  div.setAttribute("tt-button-is-done", "true");
+  div.setAttribute("tt-prompt-is-done", "true");
 
-  // 创建一个 Vue 实例, 同时确保 buttonList 是一个空数组
-  buttonList.value = [];
+  // 创建一个 Vue 实例, 同时确保 promptList 是一个空数组
+  promptList.value = [];
   const app = createApp(Button, {});
   app.mount(div);
 
-  switch (buttonLocation) {
-    case ButtonLocationEnum.Previous:
+  switch (promptLocation) {
+    case PromptLocationEnum.Previous:
       // 获取 tweetWrapper 的父元素
       const parentElement = targetWrapper.parentNode;
       // 确保存在父元素
@@ -54,7 +54,7 @@ export function createButtonContainer(
         targetWrapper.appendChild(div);
       }
       break;
-    case ButtonLocationEnum.ParentPrevious:
+    case PromptLocationEnum.ParentPrevious:
       // 获取 tweetWrapper 的父元素
       const parentParentElement = targetWrapper.parentNode?.parentNode;
       // 确保存在父元素的父元素
@@ -65,7 +65,7 @@ export function createButtonContainer(
         targetWrapper.appendChild(div);
       }
       break;
-    case ButtonLocationEnum.Next:
+    case PromptLocationEnum.Next:
       // 获取 tweetWrapper 的下一个兄弟元素
       const nextElement = targetWrapper.nextElementSibling;
       // 确保存在下一个兄弟元素
@@ -76,7 +76,7 @@ export function createButtonContainer(
         targetWrapper.parentElement?.appendChild(div);
       }
       break;
-    case ButtonLocationEnum.ParentNext:
+    case PromptLocationEnum.ParentNext:
       // 获取 tweetWrapper 的父元素
       const parentNextElement = targetWrapper.parentNode?.parentNode;
       // 确保存在父元素的父元素
@@ -87,7 +87,7 @@ export function createButtonContainer(
         targetWrapper.appendChild(div);
       }
       break;
-    case ButtonLocationEnum.Inside:
+    case PromptLocationEnum.Inside:
       // 将新创建的容器添加到 tweetWrapper 内部
       targetWrapper.appendChild(div);
       break;

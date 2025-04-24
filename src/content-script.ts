@@ -6,7 +6,6 @@ import { log } from "./common/logging";
 import { initConfig } from "./common/storage-config";
 import { TabMessage, TabMessageTypeEnum } from "./common/tabs-message";
 import { RuntimeMessageTypeEnum } from "./common/runtime-message";
-import { ttProductHuntInit } from "./components/social/_producthunt";
 import { ttTwitterInit } from "./components/social/_twitter";
 import { initEventListeners } from "./components/events/event-listeners";
 import "./tailwind.css";
@@ -37,10 +36,6 @@ async function init() {
     ttTwitterInit(window.location.href);
   }
 
-  if (window.location.href.includes("producthunt.com")) {
-    ttProductHuntInit(window.location.href);
-  }
-
   chrome.runtime.onMessage.addListener(function (
     message: TabMessage,
     sender,
@@ -65,8 +60,7 @@ async function init() {
       case TabMessageTypeEnum.X_URl:
         ttTwitterInit(message.data.url);
         break;
-      case TabMessageTypeEnum.PH_URl:
-        ttProductHuntInit(message.data.url);
+      default:
         break;
     }
   });
