@@ -261,10 +261,10 @@
               <textarea
                 v-model="config.translationService.translatePrompt"
                 class="form-input min-h-[100px]"
-                placeholder="请输入翻译提示词，可以使用 ${targetLang} 变量表示目标语言"
+                placeholder="请输入翻译提示词，可以使用 {targetLang} 变量表示目标语言"
               ></textarea>
               <p class="mt-1 text-sm text-gray-500">
-                提示：可以使用 ${targetLang} 变量来表示目标语言
+                提示：可以使用 {targetLang} 变量来表示目标语言
               </p>
             </div>
           </div>
@@ -337,19 +337,19 @@
             <p v-if="currentPromptScene === 'post'">
               <strong>内容生成场景：</strong>结合用户输入的内容生成结果。
               <p class="mt-1 text-sm text-gray-500">
-                提示：可以使用 ${userContent} 变量来表示用户输入的内容。
+                提示：可以使用 {userContent} 变量来表示用户输入的内容。
               </p>
             </p>
             <p v-else-if="currentPromptScene === 'reply'">
               <strong>内容回复场景：</strong>根据想要回复的内容结合用户输入的内容生成结果。
               <p class="mt-1 text-sm text-gray-500">
-                提示：可以使用 ${replyContent} 变量来表示想要回复的内容，${userContent} 变量来表示用户输入的内容。
+                提示：可以使用 {replyContent} 变量来表示想要回复的内容，{userContent} 变量来表示用户输入的内容。
               </p>
             </p>
             <p v-else>
               <strong>通用场景：</strong>通过快捷键（Command+Shift+P）打开工具面板，输入内容后选择按钮生成内容。
               <p class="mt-1 text-sm text-gray-500">
-                提示：可以使用 ${userContent} 变量来表示用户输入的内容。
+                提示：可以使用 {userContent} 变量来表示用户输入的内容。
               </p>
             </p>
           </div>
