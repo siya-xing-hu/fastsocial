@@ -39,8 +39,8 @@ export interface AIGenarateRuntimeMessage {
 export interface AIGenarateData {
   scene: PromptScenes;
   id: string;
-  content: string;
-  keywords?: string | null;
+  userContent?: string;
+  replyContent?: string;
 }
 
 export interface ContentScriptReadyMessage {

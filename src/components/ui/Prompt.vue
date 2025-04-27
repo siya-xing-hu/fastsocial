@@ -27,7 +27,7 @@
     >
       <span class="flex items-center justify-center">
         ✨生成
-        <span v-if="isLoading" class="ml-2">
+        <span v-if="isLoading || selectedPromptId === ''" class="ml-2">
           <i class="fas fa-spinner fa-spin"></i>
         </span>
       </span>

@@ -248,18 +248,13 @@ async function generateHandle(
     return;
   }
 
-  let sourceContent = replayContent || tweetTextareaWrapper.textContent || "";
-  if (sourceContent === "") {
-    return;
-  }
-
   const message: AIGenarateRuntimeMessage = {
     type: RuntimeMessageTypeEnum.AI_GENARATE,
     data: {
-      content: sourceContent,
       scene: replayContent ? "reply" : "post",
       id: prompt.id,
-      keywords: tweetTextareaWrapper.textContent,
+      userContent: tweetTextareaWrapper.textContent || "",
+      replyContent: replayContent || "",
     },
   };
 

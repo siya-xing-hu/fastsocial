@@ -72,10 +72,13 @@ export function debounce(
 
 export function setInputText(inputEl: HTMLElement | null, text: string): void {
   try {
+    if (!inputEl) return;
+
+    // 使用剪贴板事件粘贴新内容
     const dataTransfer = new DataTransfer();
-    dataTransfer.setData("text/plain", text); // Prepare the text to be pasted
-    inputEl?.dispatchEvent(
-      new ClipboardEvent("paste", { // Simulate a paste event
+    dataTransfer.setData("text/plain", text);
+    inputEl.dispatchEvent(
+      new ClipboardEvent("paste", {
         bubbles: true,
         clipboardData: dataTransfer,
         cancelable: true,

@@ -1,82 +1,62 @@
 <template>
   <div
-    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+    class="fixed inset-0 bg-gray-200 bg-opacity-75 flex items-center justify-end z-50"
     @click.self="close"
   >
-    <div class="bg-theme rounded-lg p-6 w-[600px] max-h-[80vh] flex flex-col">
-      <h3 class="text-xl font-medium mb-4 flex items-center">
+    <div class="common-dialog-panel bg-white rounded-l-lg p-6 h-full flex flex-col shadow-lg border border-gray-200 overflow-auto">
+      <!-- 关闭按钮 -->
+      <div class="absolute top-2 right-2">
+        <button @click="close" class="hover:opacity-80">
+          <X />
+        </button>
+      </div>
+      
+      <h3 class="text-xl font-medium mb-4 flex items-center text-gray-800">
+        <div class="flex items-center gap-2 mb-2">
+          <Sparkles />
+        </div>
         <span class="mr-2">{{ title }}</span>
       </h3>
 
       <!-- 输入区域 -->
-      <div class="mb-4">
+      <div class="mt-4 flex-grow overflow-hidden flex flex-col">
         <label class="block text-sm font-medium text-gray-700 mb-2">
           输入内容
         </label>
         <textarea
           v-model="inputContent"
-          class="w-full border border-gray-300 rounded-md p-3 min-h-[100px]"
+          class="border border-gray-300 rounded-md p-3 bg-gray-50 flex-grow overflow-auto whitespace-pre-wrap text-gray-800"
           placeholder="请输入要处理的内容..."
         ></textarea>
       </div>
 
-      <!-- 下拉框选择场景和生成按钮 -->
-      <div class="mb-4 flex items-center gap-3">
-        <div class="flex-1">
-          <label class="block text-sm font-medium text-gray-700 mb-2">
-            选择场景
-          </label>
-          <select 
-            v-model="selectedPromptId"
-            class="w-full border border-gray-300 rounded-md p-2 text-sm"
-          >
-            <option value="" disabled>请选择场景</option>
-            <option 
-              v-for="prompt in commonPrompts" 
-              :key="prompt.id" 
-              :value="prompt.id"
-            >
-              {{ prompt.icon }} {{ prompt.name }}
-            </option>
-          </select>
-        </div>
-        
-        <div class="flex flex-col justify-end">
-          <label class="block text-sm font-medium text-gray-700 mb-2">
-            &nbsp;
-          </label>
-          <button
-            @click="generate"
-            :disabled="!canGenerate"
-            class="whitespace-nowrap py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {{ isLoading ? '✨生成中...' : '✨生成' }}
-          </button>
-        </div>
+      <!-- 引用 Prompt 组件 -->
+      <div class="mb-4">
+        <Prompt :promptList="commonPrompts" />
       </div>
 
       <!-- 输出区域 -->
-      <div v-if="outputContent" class="mt-4">
+      <div v-if="outputContent" class="mt-4 flex-grow overflow-hidden flex flex-col">
         <label class="block text-sm font-medium text-gray-700 mb-2">
           生成结果
         </label>
-        <div class="border border-gray-300 rounded-md p-3 bg-gray-50 min-h-[120px] max-h-[300px] overflow-auto whitespace-pre-wrap">
+        <div class="border border-gray-300 rounded-md p-3 bg-gray-50 flex-grow overflow-auto whitespace-pre-wrap text-gray-800">
           {{ outputContent }}
         </div>
       </div>
 
       <!-- 底部按钮 -->
-      <div class="flex justify-end gap-2 mt-4">
+      <div class="flex gap-2 mt-4 justify-end">
         <button
           @click="copyOutput"
           :disabled="!outputContent"
-          class="px-4 py-2 border border-gray-300 text-gray-600 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="copy-button"
         >
           复制结果
         </button>
         <button
           @click="close"
-          class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+          class="confirm-button"
         >
           关闭
         </button>
@@ -90,6 +70,10 @@ import { ref, computed, onMounted } from "vue";
 import { config } from "../../common/storage-config";
 import { AIGenarateRuntimeMessage, RuntimeMessageTypeEnum, sendRuntimeMessage } from "../../common/runtime-message";
 import { log_error } from "../../common/logging";
+import Prompt from "./Prompt.vue";
+import type { HandlerParams } from "./prompt";
+import type { PromptConfig } from "../../common/storage-config";
+import { X, Sparkles } from "lucide-vue-next";
 
 // Props 和 Emits
 const props = defineProps({
@@ -106,27 +90,28 @@ const props = defineProps({
 // 状态变量
 const inputContent = ref("");
 const outputContent = ref("");
-const selectedPromptId = ref("");
 const isLoading = ref(false);
 
 // 缓存键
 const CACHE_KEY_INPUT = "common_dialog_input";
 const CACHE_KEY_OUTPUT = "common_dialog_output";
-const CACHE_KEY_PROMPT = "common_dialog_prompt";
 
 // 计算属性：筛选通用场景的按钮
 const commonPrompts = computed(() => {
-  return config.value.prompts.common.filter(p => p.enabled);
-});
-
-// 计算属性：是否可以生成
-const canGenerate = computed(() => {
-  return inputContent.value.trim() !== "" && selectedPromptId.value !== "" && !isLoading.value;
+  return config.value.prompts.common
+    .filter(p => p.enabled)
+    .map(prompt => ({
+      ...prompt,
+      params: { data: null } as HandlerParams,
+      handler: async (promptConfig: PromptConfig, params: HandlerParams) => {
+        await handleGenerate(prompt.id);
+      }
+    }));
 });
 
 // 生成内容
-async function generate() {
-  if (!canGenerate.value) return;
+async function handleGenerate(promptId: string) {
+  if (isLoading.value || !inputContent.value.trim()) return;
   
   isLoading.value = true;
   
@@ -134,9 +119,9 @@ async function generate() {
     const message: AIGenarateRuntimeMessage = {
       type: RuntimeMessageTypeEnum.AI_GENARATE,
       data: {
-        content: inputContent.value,
         scene: "common",
-        id: selectedPromptId.value,
+        id: promptId,
+        userContent: inputContent.value,
       },
     };
     
@@ -164,9 +149,6 @@ function copyOutput() {
   if (!outputContent.value) return;
   
   navigator.clipboard.writeText(outputContent.value)
-    .then(() => {
-      alert("已复制到剪贴板");
-    })
     .catch(err => {
       log_error("复制失败", err);
       alert("复制失败，请手动复制");
@@ -182,10 +164,12 @@ function close() {
 onMounted(() => {
   const cachedInput = localStorage.getItem(CACHE_KEY_INPUT);
   const cachedOutput = localStorage.getItem(CACHE_KEY_OUTPUT);
-  const cachedPrompt = localStorage.getItem(CACHE_KEY_PROMPT);
   
   if (cachedInput) inputContent.value = cachedInput;
   if (cachedOutput) outputContent.value = cachedOutput;
-  if (cachedPrompt) selectedPromptId.value = cachedPrompt;
 });
-</script> 
+</script>
+
+<style scoped>
+/* 组件特定样式，其余样式在全局 CSS 文件中定义 */
+</style> 

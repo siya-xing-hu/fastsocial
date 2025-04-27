@@ -80,6 +80,7 @@ function openCommonDialog() {
   
   // 创建一个新的对话框容器
   commonDialogInstance = document.createElement('div');
+  commonDialogInstance.className = "common-dialog-container";
   document.body.appendChild(commonDialogInstance);
   
   // 使用Vue创建组件

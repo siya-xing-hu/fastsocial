@@ -9,6 +9,7 @@ import { RuntimeMessageTypeEnum } from "./common/runtime-message";
 import { ttTwitterInit } from "./components/social/_twitter";
 import { initEventListeners } from "./components/events/event-listeners";
 import "./tailwind.css";
+import "./assets/common-dialog.css";
 
 async function init() {
   const now = new Date();
