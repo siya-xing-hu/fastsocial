@@ -2,95 +2,78 @@
   <div
     class="fixed inset-0 bg-gray-200 bg-opacity-75 flex justify-center items-center"
   >
-    <div class="bg-theme p-6 rounded-lg shadow-md w-96 relative">
+    <div class="dialog-container">
       <!-- 关闭按钮 -->
-      <div class="absolute top-0 left-0 p-2">
-        <button @click="cancel" class="text-gray-600 hover:text-gray-800">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
+      <div class="absolute top-2 right-2">
+        <button @click="cancel" class="hover:opacity-80">
+          <X />
         </button>
       </div>
       <!-- 标题和内容 -->
-      <div class="text-center">
-        <span class="font-semibold text-gray-700">AI Generate</span>
-        <p class="mt-2">{{ text }}</p>
+      <div>
+        <div class="flex items-center gap-2 mb-2">
+          <Sparkles />
+        </div>
+        <span class="block whitespace-pre-wrap leading-relaxed text-sm">{{
+          text
+        }}</span>
       </div>
-      <div class="flex justify-around mt-6">
+      <div class="flex justify-end mt-4">
         <button
           @click="confirm"
-          class="bg-blue-400 hover:bg-blue-500  font-thin py-1 px-2 rounded-md m-0.5"
+          class="confirm-button"
         >
-          Confirm
-        </button>
-        <button
-          @click="cancel"
-          class="bg-gray-400 hover:bg-gray-500  font-thin py-1 px-2 rounded-md m-0.5"
-        >
-          Cancel
+          确认
         </button>
       </div>
     </div>
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent, onMounted, onUnmounted, ref } from "vue";
-import { setupThemeObserver, ThemeColors } from "../../utils/themeManager";
+<script setup lang="ts">
+import { X, Sparkles } from "lucide-vue-next";
 
-export default defineComponent({
-  name: "Dialog",
-  props: {
-    text: String,
-  },
-  setup() {
-    // 创建一个引用存储清理函数
-    const cleanup = ref<(() => void) | null>(null);
-
-    onMounted(() => {
-      // 组件挂载时设置主题观察器
-      cleanup.value = setupThemeObserver();
-    });
-
-    onUnmounted(() => {
-      // 组件卸载时清理观察器
-      if (cleanup.value) {
-        cleanup.value();
-      }
-    });
-
-    return {
-      // 这里不返回任何方法，因为它们会在methods中定义
-    };
-  },
-  methods: {
-    confirm() {
-      this.$emit("confirm");
-    },
-    cancel() {
-      this.$emit("cancel");
-    },
-  },
+defineProps({
+  text: String,
 });
+
+const emit = defineEmits(['confirm', 'cancel']);
+
+function confirm() {
+  emit('confirm');
+}
+
+function cancel() {
+  emit('cancel');
+}
 </script>
 
 <style>
-.bg-theme {
-  /* 默认样式，会被JavaScript动态覆盖 */
-  background-color: #ffffff;
-  transition: background-color 0.3s ease, color 0.3s ease;
+.dialog-container {
+  background-color: white !important;
+  color: #1f2937 !important; /* text-gray-800 equivalent */
+  padding: 1.5rem !important;
+  border-radius: 0.5rem !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+  width: 36rem !important; /* w-164 equivalent, approximately */
+  position: relative !important;
+  border: 1px solid #e5e7eb !important; /* border-gray-200 equivalent */
 }
 
-/* 这里可以添加一些 CSS 样式，或者使用 Tailwind CSS 类 */
+.dialog-container * {
+  color: #1f2937 !important;
+}
+
+.confirm-button {
+  background-color: #60a5fa !important; /* bg-blue-400 */
+  color: white !important;
+  font-weight: 100 !important; /* font-thin */
+  padding: 0.25rem 0.75rem !important; /* py-1 px-3 */
+  border-radius: 0.375rem !important; /* rounded-md */
+  font-size: 0.875rem !important; /* text-sm */
+}
+
+.confirm-button:hover {
+  background-color: #3b82f6 !important; /* bg-blue-500 */
+}
 </style>

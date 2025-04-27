@@ -5,7 +5,6 @@ import Dialog from "./Dialog.vue";
 export function createDialogContainer(
   text: string,
   confirm: () => void,
-  cancel: () => void,
 ): void {
   const dialogContainer = document.createElement("div");
   dialogContainer.setAttribute("id", "dialog-container");
@@ -20,7 +19,6 @@ export function createDialogContainer(
           document.body.removeChild(dialogContainer);
         },
         onCancel: () => {
-          cancel();
           app.unmount();
           document.body.removeChild(dialogContainer);
         },

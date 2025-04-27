@@ -9,7 +9,6 @@ import { RuntimeMessageTypeEnum } from "./common/runtime-message";
 import { ttTwitterInit } from "./components/social/_twitter";
 import { initEventListeners } from "./components/events/event-listeners";
 import "./tailwind.css";
-import { setupThemeObserver } from "./utils/themeManager";
 
 async function init() {
   const now = new Date();
@@ -20,9 +19,6 @@ async function init() {
 
   // 初始化事件监听器
   initEventListeners();
-
-  // 初始化主题观察器
-  setupThemeObserver();
 
   // 发送就绪信号
   chrome.runtime.sendMessage({

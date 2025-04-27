@@ -1,5 +1,5 @@
 import { createApp, ref } from "vue";
-import Button from "./Prompt.vue";
+import Prompt from "./Prompt.vue";
 import { PromptConfig } from '../../common/storage-config';
 
 export interface HandlerParams {
@@ -39,7 +39,10 @@ export function createPromptContainer(
 
   // 创建一个 Vue 实例, 同时确保 promptList 是一个空数组
   promptList.value = [];
-  const app = createApp(Button, {});
+  const app = createApp(Prompt, {
+    promptList: promptList.value  // 将 promptList 通过 props 传递给组件
+  });
+  
   app.mount(div);
 
   switch (promptLocation) {

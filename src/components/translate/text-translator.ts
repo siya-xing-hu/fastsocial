@@ -4,7 +4,7 @@
 
 import { isContent, randomString } from "../../utils/kit";
 import { createApp } from "vue";
-import Translate from "./Translate.vue";
+import Translate from "../ui/Translate.vue";
 import {
   RuntimeMessageTypeEnum,
   sendRuntimeMessage,
