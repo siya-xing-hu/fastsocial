@@ -252,7 +252,12 @@ async function generateHandle(
     type: RuntimeMessageTypeEnum.AI_GENARATE,
     data: {
       aiProvider: config.value.basic.aiProvider,
-      userContent: prompt.prompt.replace("{replyContent}", replayContent || "").replace("{userContent}", tweetTextareaWrapper.textContent || "")
+      messages: [
+        {
+          role: "user",
+          content: prompt.prompt.replace("{replyContent}", replayContent || "").replace("{userContent}", tweetTextareaWrapper.textContent || ""),
+        },
+      ],
     },
   };
 

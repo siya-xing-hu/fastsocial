@@ -126,18 +126,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick, onBeforeUnmount } from "vue";
 import { config } from "../../common/storage-config";
-import { AIGenarateRuntimeMessage, RuntimeMessageTypeEnum, sendRuntimeMessage } from "../../common/runtime-message";
+import { AIGenarateRuntimeMessage, Message, RuntimeMessageTypeEnum, sendRuntimeMessage } from "../../common/runtime-message";
 import { log_error, log_info } from "../../common/logging";
 import { X, MessageSquare, Send, User, Bot, Trash2, ChevronsDown } from "lucide-vue-next";
 import MarkdownRenderer from "./MarkdownRenderer.vue";
-
-// 消息类型定义
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp?: number;
-  isStreaming?: boolean; // 标记当前消息是否正在进行流式输出
-}
 
 // Props 和 Emits
 const props = defineProps({
@@ -210,7 +202,6 @@ async function sendMessage() {
   const userMessage: Message = {
     role: 'user',
     content: inputContent.value,
-    timestamp: Date.now()
   };
   
   messages.value.push(userMessage);
@@ -226,12 +217,17 @@ async function sendMessage() {
   }
   
   isLoading.value = true;
-  
+
+  // 取最新的 11 组数据, 没有则取全部
+  const sendMessages = messages.value.length > 11 
+    ? messages.value.slice(-11) 
+    : messages.value;
+
   try {
     const message: AIGenarateRuntimeMessage = {
       type: RuntimeMessageTypeEnum.AI_GENARATE,
       data: {
-        userContent: userContent,
+        messages: sendMessages,
         aiProvider: selectedAIProvider.value,
         stream: true // 启用流式输出
       },
@@ -261,8 +257,6 @@ const handleStreamMessage = (message: any, sender: any, sendResponse: any) => {
     messages.value.push({
       role: 'assistant',
       content: '',
-      timestamp: Date.now(),
-      isStreaming: true
     });
     
     scrollToBottom();
@@ -276,7 +270,7 @@ const handleStreamMessage = (message: any, sender: any, sendResponse: any) => {
     
     // 更新最后一条消息的内容
     const lastMessage = messages.value[messages.value.length - 1];
-    if (lastMessage && lastMessage.isStreaming) {
+    if (lastMessage) {
       lastMessage.content += message.data.chunk;
       scrollToBottom();
     }
@@ -295,15 +289,9 @@ const handleStreamMessage = (message: any, sender: any, sendResponse: any) => {
       log_error("Stream error", message.data.error);
       // 更新最后一条消息，标记错误
       const lastMessage = messages.value[messages.value.length - 1];
-      if (lastMessage && lastMessage.isStreaming) {
+      if (lastMessage) {
         lastMessage.content += `\n\n_错误: ${message.data.error}_`;
       }
-    }
-    
-    // 更新最后一条消息的状态
-    const lastMessage = messages.value[messages.value.length - 1];
-    if (lastMessage && lastMessage.isStreaming) {
-      lastMessage.isStreaming = false;
     }
     
     // 重置流请求ID

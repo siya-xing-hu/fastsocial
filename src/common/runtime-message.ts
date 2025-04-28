@@ -2,7 +2,13 @@
  * @fileoverview 用于 chrome.runtime.sendMessage 的统一消息结构
  */
 import { log } from "./logging";
-import { PromptScenes, TranslateChannelEnum } from "./storage-config";
+import { TranslateChannelEnum } from "./storage-config";
+
+// 消息类型定义
+export interface Message {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
 
 // 用于 chrome.runtime.sendMessage 的统一消息结构
 export enum RuntimeMessageTypeEnum {
@@ -43,7 +49,7 @@ export interface AIGenarateRuntimeMessage {
 }
 
 export interface AIGenarateData {
-  userContent: string;
+  messages: Message[];
   aiProvider: string;
   stream?: boolean; // 是否使用流式输出
 }

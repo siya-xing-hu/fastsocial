@@ -1,5 +1,6 @@
-import { log_info, log_error } from "../common/logging";
+import { log_error, log_info } from "../common/logging";
 import { AIServiceConfig, config, getServiceApiKey } from "../common/storage-config";
+import { Message } from "../common/runtime-message";
 
 // 解析当前选择的服务ID和模型
 const parseAIProvider = (aiProvider: string) => {
@@ -22,7 +23,7 @@ const getCurrentAIService = (aiProvider: string): { service: AIServiceConfig, mo
 };
 
 // 执行GPT提示
-export const execGptPrompt = async (aiProvider: string, userContent: string): Promise<string> => {
+export const execGptPrompt = async (aiProvider: string, messages: Message[]): Promise<string> => {
   const serviceInfo = getCurrentAIService(aiProvider);
   if (!serviceInfo) {
     throw new Error("No AI service configured");
@@ -40,23 +41,20 @@ export const execGptPrompt = async (aiProvider: string, userContent: string): Pr
     "Authorization": `Bearer ${apiKey}`,
   };
 
-  log_info(`aiCreate, ${service.endpoint}, ${model}, ${userContent}`);
+  // 添加系统提示在第一行
+  messages.unshift({
+    role: "system",
+    content: "You are a helpful assistant.",
+  });
+
+  log_info(`execGptPrompt, ${service.endpoint}, ${model}, ${JSON.stringify(messages)}`);
 
   const response = await fetch(service.endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify({
       model: model,
-      messages: [
-        {
-          role: "system",
-          content: "You are a helpful assistant.",
-        },
-        {
-          role: "user",
-          content: userContent,
-        },
-      ],
+      messages: messages,
       temperature: 0.7,
     }),
   });
@@ -72,7 +70,7 @@ export const execGptPrompt = async (aiProvider: string, userContent: string): Pr
 // 流式执行GPT提示
 export const execGptPromptStream = async (
   aiProvider: string, 
-  userContent: string, 
+  messages: Message[], 
   onChunk: (chunk: string) => void,
   onError: (error: Error) => void,
   onComplete: () => void
@@ -96,7 +94,13 @@ export const execGptPromptStream = async (
     "Authorization": `Bearer ${apiKey}`,
   };
 
-  log_info(`aiCreateStream, ${service.endpoint}, ${model}, ${userContent.substring(0, 50)}...`);
+  // 添加系统提示在第一行
+  messages.unshift({
+    role: "system",
+    content: "You are a helpful assistant.",
+  });
+
+  log_info(`execGptPromptStream, ${service.endpoint}, ${model}, ${JSON.stringify(messages)}`);
 
   try {
     const response = await fetch(service.endpoint, {
@@ -104,16 +108,7 @@ export const execGptPromptStream = async (
       headers,
       body: JSON.stringify({
         model: model,
-        messages: [
-          {
-            role: "system",
-            content: "You are a helpful assistant.",
-          },
-          {
-            role: "user",
-            content: userContent,
-          },
-        ],
+        messages: messages,
         temperature: 0.7,
         stream: true, // 启用流式输出
       }),

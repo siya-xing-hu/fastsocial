@@ -70,7 +70,12 @@ export async function translate(channel: TranslateChannelEnum, text: string, is_
       } else {
         prompt += "请直接输出翻译结果，不要过度解读。";
       }
-      return await execGptPrompt(config.value.basic.aiProvider, prompt.replace("{targetLang}", config.value.basic.targetLang).replace("{userContent}", text));
+      return await execGptPrompt(config.value.basic.aiProvider, [
+        {
+          role: "user",
+          content: prompt.replace("{targetLang}", config.value.basic.targetLang).replace("{userContent}", text),
+        },
+      ]);
     default:
       throw new Error(`Unsupported translation provider: ${channel}`);
   }

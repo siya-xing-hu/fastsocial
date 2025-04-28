@@ -126,7 +126,7 @@ export function init() {
               
               execGptPromptStream(
                 data.aiProvider,
-                data.userContent,
+                data.messages,
                 // 每次收到数据块时回调
                 (chunk) => {
                   fullContent += chunk;
@@ -188,7 +188,7 @@ export function init() {
             retry(
               async () => {
                 return Promise.resolve(
-                  await execGptPrompt(data.aiProvider, data.userContent),
+                  await execGptPrompt(data.aiProvider, data.messages),
                 );
               },
               1,
