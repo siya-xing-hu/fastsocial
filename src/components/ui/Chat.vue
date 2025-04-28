@@ -39,47 +39,59 @@
       </div>
       
       <!-- 聊天消息区域 -->
-      <div class="flex-grow overflow-auto p-4" ref="messagesContainer">
-        <div v-if="messages.length === 0" class="h-full flex flex-col items-center justify-center text-gray-400">
-          <MessageSquare class="h-12 w-12 mb-3" />
-          <p class="text-center">开始与AI助手聊天</p>
-          <p class="text-center text-sm mt-1">在下方输入问题开始对话</p>
-        </div>
-        
-        <div v-else class="space-y-6">
-          <div v-for="(message, index) in messages" :key="index" class="message-item">
-            <!-- 用户消息 -->
-            <div v-if="message.role === 'user'" class="flex justify-end mb-4">
-              <div class="bg-blue-50 border-l-4 border-blue-400 text-gray-800 p-3 rounded-lg max-w-[80%] break-words shadow-sm">
-                <div class="flex items-start">
-                  <p class="whitespace-pre-wrap flex-grow">{{ message.content }}</p>
-                  <User class="h-4 w-4 ml-2 mt-1 text-blue-500 flex-shrink-0" />
+      <div class="flex-grow relative" ref="messagesContainer">
+        <!-- 消息滚动容器 -->
+        <div class="absolute inset-0 overflow-auto p-4" ref="scrollContainer" @scroll="handleScroll">
+          <div v-if="messages.length === 0" class="h-full flex flex-col items-center justify-center text-gray-400">
+            <MessageSquare class="h-12 w-12 mb-3" />
+            <p class="text-center">开始与AI助手聊天</p>
+            <p class="text-center text-sm mt-1">在下方输入问题开始对话</p>
+          </div>
+          
+          <div v-else class="space-y-6">
+            <div v-for="(message, index) in messages" :key="index" class="message-item">
+              <!-- 用户消息 -->
+              <div v-if="message.role === 'user'" class="flex justify-end mb-4">
+                <div class="bg-blue-50 border-l-4 border-blue-400 text-gray-800 p-3 rounded-lg max-w-[80%] break-words shadow-sm">
+                  <div class="flex items-start">
+                    <p class="whitespace-pre-wrap flex-grow">{{ message.content }}</p>
+                    <User class="h-4 w-4 ml-2 mt-1 text-blue-500 flex-shrink-0" />
+                  </div>
+                </div>
+              </div>
+              
+              <!-- AI助手消息 -->
+              <div v-else class="flex mb-4">
+                <div class="bg-green-50 border-l-4 border-green-400 text-gray-800 p-3 rounded-lg max-w-[80%] break-words shadow-sm">
+                  <div class="flex items-start">
+                    <Bot class="h-4 w-4 mr-2 mt-1 text-green-600 flex-shrink-0" />
+                    <MarkdownRenderer :content="message.content" class="flex-grow" />
+                  </div>
                 </div>
               </div>
             </div>
             
-            <!-- AI助手消息 -->
-            <div v-else class="flex mb-4">
-              <div class="bg-green-50 border-l-4 border-green-400 text-gray-800 p-3 rounded-lg max-w-[80%] break-words shadow-sm">
-                <div class="flex items-start">
-                  <Bot class="h-4 w-4 mr-2 mt-1 text-green-600 flex-shrink-0" />
-                  <MarkdownRenderer :content="message.content" class="flex-grow" />
-                </div>
+            <!-- 加载指示器 -->
+            <div v-if="isLoading" class="flex items-center space-x-2 mb-4">
+              <div class="bg-gray-100 p-3 rounded-lg flex items-center">
+                <div class="typing-loader"></div>
               </div>
             </div>
           </div>
-          
-          <!-- 加载指示器 -->
-          <div v-if="isLoading" class="flex items-center space-x-2 mb-4">
-            <div class="bg-gray-100 p-3 rounded-lg flex items-center">
-              <div class="typing-loader"></div>
-            </div>
-          </div>
         </div>
+
+        <!-- 滚动到底部按钮 - 放在滚动容器外部但仍在messagesContainer内 -->
+        <button 
+          v-if="showScrollToBottom" 
+          @click="scrollToBottom" 
+          class="absolute bottom-5 right-5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-full p-2 shadow-md transition-all duration-200 z-50"
+        >
+          <ChevronsDown class="h-5 w-5" />
+        </button>
       </div>
       
       <!-- 底部输入区域 -->
-      <div class="border-t border-gray-200 p-4 bg-white">
+      <div class="border-t border-gray-200 p-2 bg-white">
         <!-- 输入框和发送按钮 -->
         <div class="flex items-end space-x-2">
           <div class="flex-grow relative">
@@ -103,7 +115,7 @@
           </div>
         </div>
         
-        <div class="text-xs text-gray-500 mt-1 text-right">
+        <div class="text-xs text-gray-200 mt-1 text-right">
           按 Ctrl+Enter 发送
         </div>
       </div>
@@ -112,11 +124,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from "vue";
+import { ref, computed, onMounted, watch, nextTick, onBeforeUnmount } from "vue";
 import { config } from "../../common/storage-config";
 import { AIGenarateRuntimeMessage, RuntimeMessageTypeEnum, sendRuntimeMessage } from "../../common/runtime-message";
-import { log_error } from "../../common/logging";
-import { X, MessageSquare, Send, User, Bot, Trash2 } from "lucide-vue-next";
+import { log_error, log_info } from "../../common/logging";
+import { X, MessageSquare, Send, User, Bot, Trash2, ChevronsDown } from "lucide-vue-next";
 import MarkdownRenderer from "./MarkdownRenderer.vue";
 
 // 消息类型定义
@@ -124,6 +136,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp?: number;
+  isStreaming?: boolean; // 标记当前消息是否正在进行流式输出
 }
 
 // Props 和 Emits
@@ -140,7 +153,11 @@ const messages = ref<Message[]>([]);
 const isLoading = ref(false);
 const selectedAIProvider = ref(config.value.basic.aiProvider);
 const messagesContainer = ref<HTMLElement | null>(null);
+const scrollContainer = ref<HTMLElement | null>(null); // 新增滚动容器的ref
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
+const currentStreamRequestId = ref<string | null>(null); // 当前流式请求ID
+const showScrollToBottom = ref(false); // 是否显示滚动到底部按钮
+const isScrolledToBottom = ref(true); // 是否已滚动到底部
 
 // 缓存键
 const CACHE_KEY_MESSAGES = "chat_dialog_messages";
@@ -166,9 +183,23 @@ const serviceModelOptions = computed(() => {
 // 自动滚动到底部
 const scrollToBottom = async () => {
   await nextTick();
-  if (messagesContainer.value) {
-    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+  if (scrollContainer.value) {
+    scrollContainer.value.scrollTop = scrollContainer.value.scrollHeight;
+    isScrolledToBottom.value = true;
+    showScrollToBottom.value = false; // 滚动到底部后隐藏按钮
   }
+};
+
+// 处理滚动事件，判断是否需要显示"滚动到底部"按钮
+const handleScroll = () => {
+  if (!scrollContainer.value) return;
+  
+  const { scrollTop, scrollHeight, clientHeight } = scrollContainer.value;
+  // 如果距离底部不到20px，视为已经在底部
+  const isAtBottom = scrollHeight - scrollTop - clientHeight < 20;
+  
+  isScrolledToBottom.value = isAtBottom;
+  showScrollToBottom.value = !isAtBottom && messages.value.length > 0;
 };
 
 // 发送消息
@@ -201,44 +232,93 @@ async function sendMessage() {
       type: RuntimeMessageTypeEnum.AI_GENARATE,
       data: {
         userContent: userContent,
-        aiProvider: selectedAIProvider.value
+        aiProvider: selectedAIProvider.value,
+        stream: true // 启用流式输出
       },
     };
     
+    // 发送请求并等待初始响应
+    log_info("发送AI生成请求");
     const response = await sendRuntimeMessage(message);
-    if (!response.is_ok) {
-      log_error("AI chat failed", response.error);
-      messages.value.push({
-        role: 'assistant',
-        content: "回复失败: " + response.error,
-        timestamp: Date.now()
-      });
-      return;
-    }
-    
-    // 添加AI回复
-    messages.value.push({
-      role: 'assistant',
-      content: response.data,
-      timestamp: Date.now()
-    });
-    
-    // 保存对话历史和选中的模型到本地存储
-    saveToCache();
+  
   } catch (error) {
-    log_error("发送消息失败", error);
-    messages.value.push({
-      role: 'assistant',
-      content: "发送失败，请重试",
-      timestamp: Date.now()
-    });
-  } finally {
-    isLoading.value = false;
-    
-    // 滚动到底部
-    await scrollToBottom();
+    log_error("消息发送失败", error);
   }
 }
+
+// 处理流式消息的监听器
+const handleStreamMessage = (message: any, sender: any, sendResponse: any) => {
+  // 只处理来自后台脚本的消息
+  if (sender.tab) {
+    return false;
+  }
+  
+  if (message.type === RuntimeMessageTypeEnum.AI_STREAM_START) {
+    log_info("Stream started", message.data.requestId);
+    currentStreamRequestId.value = message.data.requestId;
+    
+    // 添加一个空的助手消息
+    messages.value.push({
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+      isStreaming: true
+    });
+    
+    scrollToBottom();
+    // 返回响应表示已处理
+    sendResponse?.({ received: true });
+    return true;
+  }
+  
+  if (message.type === RuntimeMessageTypeEnum.AI_STREAM_CHUNK && 
+      currentStreamRequestId.value === message.data.requestId) {
+    
+    // 更新最后一条消息的内容
+    const lastMessage = messages.value[messages.value.length - 1];
+    if (lastMessage && lastMessage.isStreaming) {
+      lastMessage.content += message.data.chunk;
+      scrollToBottom();
+    }
+    // 返回响应表示已处理
+    sendResponse?.({ received: true });
+    return true;
+  }
+  
+  if (message.type === RuntimeMessageTypeEnum.AI_STREAM_END && 
+      currentStreamRequestId.value === message.data.requestId) {
+    
+    log_info("Stream ended", message.data.requestId);
+    
+    // 如果有错误
+    if (message.data.error) {
+      log_error("Stream error", message.data.error);
+      // 更新最后一条消息，标记错误
+      const lastMessage = messages.value[messages.value.length - 1];
+      if (lastMessage && lastMessage.isStreaming) {
+        lastMessage.content += `\n\n_错误: ${message.data.error}_`;
+      }
+    }
+    
+    // 更新最后一条消息的状态
+    const lastMessage = messages.value[messages.value.length - 1];
+    if (lastMessage && lastMessage.isStreaming) {
+      lastMessage.isStreaming = false;
+    }
+    
+    // 重置流请求ID
+    currentStreamRequestId.value = null;
+    isLoading.value = false;
+    
+    // 保存对话历史
+    saveToCache();
+    // 返回响应表示已处理
+    sendResponse?.({ received: true });
+    return true;
+  }
+  
+  return false;
+};
 
 // 限制消息数量，保留最新的 MAX_MESSAGES 条消息
 function limitMessages() {
@@ -295,6 +375,13 @@ function close() {
 // 监听消息变化
 watch(messages, () => {
   saveToCache();
+  // 如果用户已经滚动到底部或者正在加载中，保持滚动到底部
+  if (isScrolledToBottom.value || isLoading.value) {
+    scrollToBottom();
+  } else {
+    // 否则显示滚动到底部按钮
+    showScrollToBottom.value = true;
+  }
 }, { deep: true });
 
 // 监听选中的AI提供商变化
@@ -303,9 +390,15 @@ watch(selectedAIProvider, () => {
 });
 
 // 组件挂载时，恢复缓存数据
-onMounted(async () => {
+onMounted(() => {
+  // 移除之前的三个监听器，改用一个统一的监听器
+  chrome.runtime.onMessage.addListener(handleStreamMessage);
+  
   try {
-    await loadFromCache();
+    loadFromCache().then(() => {
+      // 加载完缓存数据后滚动到底部
+      scrollToBottom();
+    });
   } catch (e) {
     log_error("解析缓存消息失败", e);
   }
@@ -314,9 +407,11 @@ onMounted(async () => {
   if (textareaRef.value) {
     textareaRef.value.focus();
   }
-  
-  // 滚动到底部
-  await scrollToBottom();
+});
+
+// 组件卸载前移除监听器
+onBeforeUnmount(() => {
+  chrome.runtime.onMessage.removeListener(handleStreamMessage);
 });
 </script>
 

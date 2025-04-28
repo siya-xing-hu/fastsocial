@@ -10,13 +10,19 @@ export enum RuntimeMessageTypeEnum {
   CONFIG_UPDATE = "config-update",
   AI_GENARATE = "ai-genarate",
   CONTENT_SCRIPT_READY = "content-script-ready",
+  AI_STREAM_START = "ai-stream-start",
+  AI_STREAM_CHUNK = "ai-stream-chunk",
+  AI_STREAM_END = "ai-stream-end",
 }
 
 export type RuntimeMessage =
   | TranslateRuntimeMessage
   | ConfigUpdateRuntimeMessage
   | AIGenarateRuntimeMessage
-  | ContentScriptReadyMessage;
+  | ContentScriptReadyMessage
+  | AIStreamStartMessage
+  | AIStreamChunkMessage
+  | AIStreamEndMessage;
 
 export interface TranslateRuntimeMessage {
   type: RuntimeMessageTypeEnum.TRANSLATE;
@@ -39,6 +45,30 @@ export interface AIGenarateRuntimeMessage {
 export interface AIGenarateData {
   userContent: string;
   aiProvider: string;
+  stream?: boolean; // 是否使用流式输出
+}
+
+export interface AIStreamStartMessage {
+  type: RuntimeMessageTypeEnum.AI_STREAM_START;
+  data: {
+    requestId: string; // 请求唯一标识，用于关联同一个请求的多个消息
+  };
+}
+
+export interface AIStreamChunkMessage {
+  type: RuntimeMessageTypeEnum.AI_STREAM_CHUNK;
+  data: {
+    requestId: string;
+    chunk: string;
+  };
+}
+
+export interface AIStreamEndMessage {
+  type: RuntimeMessageTypeEnum.AI_STREAM_END;
+  data: {
+    requestId: string;
+    error?: string; // 如果有错误，提供错误信息
+  };
 }
 
 export interface ContentScriptReadyMessage {
