@@ -6,7 +6,7 @@ import {
   sendRuntimeMessage,
 } from "./runtime-message";
 
-export const promptScenes = ["post", "reply", "common"] as const;
+export const promptScenes = ["post", "reply"] as const;
 export type PromptScenes = typeof promptScenes[number];
 
 // 定义翻译渠道
@@ -71,7 +71,6 @@ interface Config {
   prompts: {
     post: PromptConfig[];
     reply: PromptConfig[];
-    common: PromptConfig[];
   };
 }
 
@@ -127,19 +126,6 @@ const DEFAULT_CONFIG: Config = {
     reply: [
       {
         id: `reply-${Date.now()}`,
-        name: "翻译",
-        icon: "🌎",
-        prompt: `请将文本内容
-          ''' 
-          {userContent} 
-          ''' 
-翻译成英文。翻译要求：1. 保持原文的语气和风格；2. 确保翻译的流畅性和自然度；3. 直接输出翻译结果，不要输出解析思考。`,
-        enabled: true,
-      },
-    ],
-    common: [
-      {
-        id: `common-${Date.now()}`,
         name: "翻译",
         icon: "🌎",
         prompt: `请将文本内容

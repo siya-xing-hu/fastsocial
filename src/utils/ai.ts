@@ -2,14 +2,14 @@ import { log_info } from "../common/logging";
 import { AIServiceConfig, config, getServiceApiKey } from "../common/storage-config";
 
 // 解析当前选择的服务ID和模型
-const parseAIProvider = () => {
-  const [serviceId = "", model = ""] = config.value.basic.aiProvider.split(":");
+const parseAIProvider = (aiProvider: string) => {
+  const [serviceId = "", model = ""] = aiProvider.split(":");
   return { serviceId, model };
 };
 
 // 获取当前启用的AI服务配置和模型
-const getCurrentAIService = (): { service: AIServiceConfig, model: string } | null => {
-  const { serviceId, model } = parseAIProvider();
+const getCurrentAIService = (aiProvider: string): { service: AIServiceConfig, model: string } | null => {
+  const { serviceId, model } = parseAIProvider(aiProvider);
   const currentService = config.value.aiServices.find(
     (service: AIServiceConfig) => service.id === serviceId
   );
@@ -22,8 +22,8 @@ const getCurrentAIService = (): { service: AIServiceConfig, model: string } | nu
 };
 
 // 执行GPT提示
-export const execGptPrompt = async (userContent: string): Promise<string> => {
-  const serviceInfo = getCurrentAIService();
+export const execGptPrompt = async (aiProvider: string, userContent: string): Promise<string> => {
+  const serviceInfo = getCurrentAIService(aiProvider);
   if (!serviceInfo) {
     throw new Error("No AI service configured");
   }

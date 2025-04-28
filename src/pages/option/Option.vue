@@ -346,12 +346,6 @@
                 提示：可以使用 {replyContent} 变量来表示想要回复的内容，{userContent} 变量来表示用户输入的内容。
               </p>
             </p>
-            <p v-else>
-              <strong>通用场景：</strong>通过快捷键（Command+Shift+P）打开工具面板，输入内容后选择按钮生成内容。
-              <p class="mt-1 text-sm text-gray-500">
-                提示：可以使用 {userContent} 变量来表示用户输入的内容。
-              </p>
-            </p>
           </div>
 
           <!-- 按钮列表 -->
@@ -810,8 +804,6 @@ function getSceneLabel(scene: string): string {
       return "生成场景";
     case 'reply':
       return "回复场景";
-    case 'common':
-      return "通用场景";
     default:
       return String(scene);
   }
@@ -828,7 +820,7 @@ onMounted(async () => {
     // 确保按钮配置有正确的结构
     const configPrompts = config.value.prompts as any;
     if (!configPrompts || typeof configPrompts !== 'object') {
-      config.value.prompts = { post: [], reply: [], common: [] };
+      config.value.prompts = { post: [], reply: [] };
     } else {
       // 确保每个场景都有正确的数组
       for (const scene of promptScenes) {
@@ -841,7 +833,7 @@ onMounted(async () => {
     log_error("初始化配置失败:", error);
     // 确保即使初始化失败也有默认值
     config.value.aiServices = [];
-    config.value.prompts = { post: [], reply: [], common: [] };
+    config.value.prompts = { post: [], reply: [] };
   }
 });
 </script>

@@ -25,11 +25,14 @@
   "dependencies": {
     "@headlessui/vue": "^1.7.16",
     "@heroicons/vue": "^2.1.1",
+    "@types/markdown-it": "^14.1.2",
     "hotkeys-js": "^3.13.9",
     "lodash": "^4.17.21",
     "lucide-vue-next": "^0.503.0",
+    "markdown-it": "^14.1.0",
     "uuid": "^9.0.1",
-    "vue": "^3.4.6"
+    "vue": "^3.4.6",
+    "vue-markdown-it": "^0.9.4"
   },
   "packageManager": "pnpm@9.11.0"
 }

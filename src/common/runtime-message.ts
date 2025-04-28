@@ -37,10 +37,8 @@ export interface AIGenarateRuntimeMessage {
 }
 
 export interface AIGenarateData {
-  scene: PromptScenes;
-  id: string;
-  userContent?: string;
-  replyContent?: string;
+  userContent: string;
+  aiProvider: string;
 }
 
 export interface ContentScriptReadyMessage {

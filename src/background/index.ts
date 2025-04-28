@@ -82,19 +82,10 @@ export function init() {
         case RuntimeMessageTypeEnum.AI_GENARATE:
           const data: AIGenarateData = message.data;
 
-          const prompt = config.value.prompts[data.scene].find(
-            (prompt) => prompt.id === data.id,
-          );
-
-          if (!prompt) {
-            sendResponse({ is_ok: false, error: "未找到指定的按钮配置" });
-            break;
-          }
-
           retry(
             async () => {
               return Promise.resolve(
-                await execGptPrompt(prompt.prompt.replace("{replyContent}", data.replyContent || "").replace("{userContent}", data.userContent || "")),
+                await execGptPrompt(data.aiProvider, data.userContent),
               );
             },
             1,

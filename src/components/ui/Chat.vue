@@ -1,0 +1,364 @@
+<template>
+  <div
+    class="fixed inset-0 bg-gray-200 bg-opacity-75 flex items-center justify-end z-50"
+    @click.self="close"
+  >
+    <div class="chat-panel bg-white rounded-l-lg h-full flex flex-col shadow-lg border border-gray-200 overflow-auto">
+      <!-- 头部 -->
+      <div class="p-4 border-b border-gray-200 flex flex-col bg-gray-50">
+        <div class="flex justify-between items-center mb-2">
+          <h3 class="text-lg font-medium flex items-center text-gray-800">
+            <MessageSquare class="mr-2 h-5 w-5 text-blue-500" />
+            <span>AI 聊天助手</span>
+          </h3>
+          <div class="flex gap-2">
+            <button @click="clearChatHistory" class="hover:bg-red-200 p-1 rounded-full">
+              <Trash2 class="h-4 w-4" />
+            </button>
+            <button @click="close" class="hover:bg-gray-200 p-1 rounded-full">
+              <X class="h-5 w-5 text-gray-600" />
+            </button>
+          </div>
+        </div>
+        
+        <!-- AI模型选择器 - 移到标题下方 -->
+        <div class="relative">
+          <select 
+            v-model="selectedAIProvider" 
+            class="chat-model-selector"
+          >
+            <option
+              v-for="option in serviceModelOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </select>
+        </div>
+      </div>
+      
+      <!-- 聊天消息区域 -->
+      <div class="flex-grow overflow-auto p-4" ref="messagesContainer">
+        <div v-if="messages.length === 0" class="h-full flex flex-col items-center justify-center text-gray-400">
+          <MessageSquare class="h-12 w-12 mb-3" />
+          <p class="text-center">开始与AI助手聊天</p>
+          <p class="text-center text-sm mt-1">在下方输入问题开始对话</p>
+        </div>
+        
+        <div v-else class="space-y-6">
+          <div v-for="(message, index) in messages" :key="index" class="message-item">
+            <!-- 用户消息 -->
+            <div v-if="message.role === 'user'" class="flex justify-end mb-4">
+              <div class="bg-blue-50 border-l-4 border-blue-400 text-gray-800 p-3 rounded-lg max-w-[80%] break-words shadow-sm">
+                <div class="flex items-start">
+                  <p class="whitespace-pre-wrap flex-grow">{{ message.content }}</p>
+                  <User class="h-4 w-4 ml-2 mt-1 text-blue-500 flex-shrink-0" />
+                </div>
+              </div>
+            </div>
+            
+            <!-- AI助手消息 -->
+            <div v-else class="flex mb-4">
+              <div class="bg-green-50 border-l-4 border-green-400 text-gray-800 p-3 rounded-lg max-w-[80%] break-words shadow-sm">
+                <div class="flex items-start">
+                  <Bot class="h-4 w-4 mr-2 mt-1 text-green-600 flex-shrink-0" />
+                  <MarkdownRenderer :content="message.content" class="flex-grow" />
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 加载指示器 -->
+          <div v-if="isLoading" class="flex items-center space-x-2 mb-4">
+            <div class="bg-gray-100 p-3 rounded-lg flex items-center">
+              <div class="typing-loader"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 底部输入区域 -->
+      <div class="border-t border-gray-200 p-4 bg-white">
+        <!-- 输入框和发送按钮 -->
+        <div class="flex items-end space-x-2">
+          <div class="flex-grow relative">
+            <textarea
+              v-model="inputContent"
+              class="w-full border border-gray-300 rounded-lg p-3 pr-10 resize-none bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="输入问题..."
+              rows="3"
+              @keydown.enter.ctrl="sendMessage"
+              ref="textareaRef"
+            ></textarea>
+            
+            <!-- 发送按钮 -->
+            <button
+              @click="sendMessage"
+              class="absolute bottom-3 right-3 confirm-button rounded-full p-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="isLoading || !inputContent.trim()"
+            >
+              <Send class="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        
+        <div class="text-xs text-gray-500 mt-1 text-right">
+          按 Ctrl+Enter 发送
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted, watch, nextTick } from "vue";
+import { config } from "../../common/storage-config";
+import { AIGenarateRuntimeMessage, RuntimeMessageTypeEnum, sendRuntimeMessage } from "../../common/runtime-message";
+import { log_error } from "../../common/logging";
+import { X, MessageSquare, Send, User, Bot, Trash2 } from "lucide-vue-next";
+import MarkdownRenderer from "./MarkdownRenderer.vue";
+
+// 消息类型定义
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp?: number;
+}
+
+// Props 和 Emits
+const props = defineProps({
+  onClose: {
+    type: Function,
+    required: true
+  }
+});
+
+// 状态变量
+const inputContent = ref("");
+const messages = ref<Message[]>([]);
+const isLoading = ref(false);
+const selectedAIProvider = ref(config.value.basic.aiProvider);
+const messagesContainer = ref<HTMLElement | null>(null);
+const textareaRef = ref<HTMLTextAreaElement | null>(null);
+
+// 缓存键
+const CACHE_KEY_MESSAGES = "chat_dialog_messages";
+const CACHE_KEY_PROVIDER = "chat_dialog_provider";
+const MAX_MESSAGES = 100; // 最多保存100条消息（50次对话）
+
+// 计算属性：获取所有可用的服务-模型组合
+const serviceModelOptions = computed(() => {
+  const options = [];
+  for (const service of config.value.aiServices) {
+    if (service.enabled && service.customModels && service.customModels.length > 0) {
+      for (const model of service.customModels) {
+        options.push({
+          value: `${service.id}:${model}`,
+          label: `${service.name}: ${model}`
+        });
+      }
+    }
+  }
+  return options;
+});
+
+// 自动滚动到底部
+const scrollToBottom = async () => {
+  await nextTick();
+  if (messagesContainer.value) {
+    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+  }
+};
+
+// 发送消息
+async function sendMessage() {
+  if (isLoading.value || !inputContent.value.trim()) return;
+  
+  // 添加用户消息
+  const userMessage: Message = {
+    role: 'user',
+    content: inputContent.value,
+    timestamp: Date.now()
+  };
+  
+  messages.value.push(userMessage);
+  const userContent = inputContent.value;
+  inputContent.value = "";
+  
+  // 滚动到底部
+  await scrollToBottom();
+  
+  // 聚焦输入框
+  if (textareaRef.value) {
+    textareaRef.value.focus();
+  }
+  
+  isLoading.value = true;
+  
+  try {
+    const message: AIGenarateRuntimeMessage = {
+      type: RuntimeMessageTypeEnum.AI_GENARATE,
+      data: {
+        userContent: userContent,
+        aiProvider: selectedAIProvider.value
+      },
+    };
+    
+    const response = await sendRuntimeMessage(message);
+    if (!response.is_ok) {
+      log_error("AI chat failed", response.error);
+      messages.value.push({
+        role: 'assistant',
+        content: "回复失败: " + response.error,
+        timestamp: Date.now()
+      });
+      return;
+    }
+    
+    // 添加AI回复
+    messages.value.push({
+      role: 'assistant',
+      content: response.data,
+      timestamp: Date.now()
+    });
+    
+    // 保存对话历史和选中的模型到本地存储
+    saveToCache();
+  } catch (error) {
+    log_error("发送消息失败", error);
+    messages.value.push({
+      role: 'assistant',
+      content: "发送失败，请重试",
+      timestamp: Date.now()
+    });
+  } finally {
+    isLoading.value = false;
+    
+    // 滚动到底部
+    await scrollToBottom();
+  }
+}
+
+// 限制消息数量，保留最新的 MAX_MESSAGES 条消息
+function limitMessages() {
+  if (messages.value.length > MAX_MESSAGES) {
+    messages.value = messages.value.slice(messages.value.length - MAX_MESSAGES);
+  }
+}
+
+// 保存到 Chrome Storage
+function saveToCache() {
+  // 限制消息数量
+  limitMessages();
+  
+  // 保存到 Chrome Storage，对消息进行序列化
+  chrome.storage.local.set({
+    [CACHE_KEY_MESSAGES]: JSON.stringify(messages.value),
+    [CACHE_KEY_PROVIDER]: selectedAIProvider.value
+  });
+}
+
+// 清除聊天历史
+function clearChatHistory() {
+  messages.value = [];
+  chrome.storage.local.remove(CACHE_KEY_MESSAGES);
+}
+
+// 从 Chrome Storage 加载数据
+async function loadFromCache() {
+  return new Promise<void>((resolve) => {
+    chrome.storage.local.get([CACHE_KEY_MESSAGES, CACHE_KEY_PROVIDER], (result) => {
+      if (result[CACHE_KEY_MESSAGES]) {
+        try {
+          messages.value = JSON.parse(result[CACHE_KEY_MESSAGES]);
+        } catch (e) {
+          log_error("解析缓存消息失败", e);
+          messages.value = [];
+        }
+      }
+      
+      if (result[CACHE_KEY_PROVIDER]) {
+        selectedAIProvider.value = result[CACHE_KEY_PROVIDER];
+      }
+      
+      resolve();
+    });
+  });
+}
+
+// 关闭对话框
+function close() {
+  props.onClose();
+}
+
+// 监听消息变化
+watch(messages, () => {
+  saveToCache();
+}, { deep: true });
+
+// 监听选中的AI提供商变化
+watch(selectedAIProvider, () => {
+  chrome.storage.local.set({ [CACHE_KEY_PROVIDER]: selectedAIProvider.value });
+});
+
+// 组件挂载时，恢复缓存数据
+onMounted(async () => {
+  try {
+    await loadFromCache();
+  } catch (e) {
+    log_error("解析缓存消息失败", e);
+  }
+  
+  // 聚焦输入框
+  if (textareaRef.value) {
+    textareaRef.value.focus();
+  }
+  
+  // 滚动到底部
+  await scrollToBottom();
+});
+</script>
+
+<style scoped>
+.typing-loader {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: typing 1s linear infinite alternate;
+  position: relative;
+  left: -12px;
+}
+
+.typing-loader::before,
+.typing-loader::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: typing 1s linear infinite alternate;
+  top: 0;
+}
+
+.typing-loader::before {
+  left: 12px;
+  animation-delay: 0.2s;
+}
+
+.typing-loader::after {
+  left: 24px;
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0% {
+    background-color: rgba(0,0,0,0.6);
+    transform: translateY(0px);
+  }
+  50%, 100% {
+    background-color: rgba(0,0,0,0.1);
+    transform: translateY(-5px);
+  }
+}
+</style> 

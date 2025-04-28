@@ -251,10 +251,8 @@ async function generateHandle(
   const message: AIGenarateRuntimeMessage = {
     type: RuntimeMessageTypeEnum.AI_GENARATE,
     data: {
-      scene: replayContent ? "reply" : "post",
-      id: prompt.id,
-      userContent: tweetTextareaWrapper.textContent || "",
-      replyContent: replayContent || "",
+      aiProvider: config.value.basic.aiProvider,
+      userContent: prompt.prompt.replace("{replyContent}", replayContent || "").replace("{userContent}", tweetTextareaWrapper.textContent || "")
     },
   };
 

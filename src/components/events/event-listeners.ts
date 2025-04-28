@@ -5,8 +5,8 @@
 import { log, log_error } from "../../common/logging";
 import { execNotionTranslate, execTranslate } from "../translate/text-translator";
 import { createApp } from "vue";
-import CommonDialog from "../ui/CommonDialog.vue";
 import hotkeys from 'hotkeys-js';
+import Chat from "../ui/Chat.vue";
 
 // 鼠标位置
 let mousePosition = { x: 0, y: 0 };
@@ -84,8 +84,8 @@ function openCommonDialog() {
   document.body.appendChild(commonDialogInstance);
   
   // 使用Vue创建组件
-  const app = createApp(CommonDialog, {
-    title: "通用生成工具",
+  const app = createApp(Chat, {
+    title: "AI 聊天助手",
     onClose: () => {
       app.unmount();
       if (commonDialogInstance) {
