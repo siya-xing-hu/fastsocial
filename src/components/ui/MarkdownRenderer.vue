@@ -141,12 +141,6 @@ const renderedContent = computed(() => {
   text-decoration: underline;
 }
 
-.markdown-content table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 1rem 0;
-}
-
 .markdown-content th, .markdown-content td {
   border: 1px solid #e5e7eb;
   padding: 0.5rem;
