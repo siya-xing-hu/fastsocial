@@ -4,18 +4,23 @@ import { Message } from "../common/runtime-message";
 
 // 解析当前选择的服务ID和模型
 const parseAIProvider = (aiProvider: string) => {
-  const [serviceId = "", model = ""] = aiProvider.split(":");
-  return { serviceId, model };
+  const [serviceId = "", modelName = ""] = aiProvider.split(":");
+  return { serviceId, modelName };
 };
 
 // 获取当前启用的AI服务配置和模型
-const getCurrentAIService = (aiProvider: string): { service: AIServiceConfig, model: string } | null => {
-  const { serviceId, model } = parseAIProvider(aiProvider);
+const getCurrentAIService = (aiProvider: string): { service: AIServiceConfig, model: { name: string; thinking?: { type: "enabled" | "disabled" | "auto" } } } | null => {
+  const { serviceId, modelName } = parseAIProvider(aiProvider);
   const currentService = config.value.aiServices.find(
     (service: AIServiceConfig) => service.id === serviceId
   );
   
-  if (!currentService || !model) {
+  if (!currentService || !modelName) {
+    return null;
+  }
+
+  const model = currentService.customModels?.find(m => m.name === modelName);
+  if (!model) {
     return null;
   }
   
@@ -47,16 +52,24 @@ export const execGptPrompt = async (aiProvider: string, messages: Message[]): Pr
     content: "You are a helpful assistant.",
   });
 
-  log_info(`execGptPrompt, ${service.endpoint}, ${model}, ${JSON.stringify(messages)}`);
+  // 根据thinking配置决定是否添加thinking参数
+  const requestBody: any = {
+    model: model.name,
+    messages: messages,
+    temperature: 0.7,
+  };
+
+  // 如果模型配置了thinking，则添加thinking参数
+  if (model.thinking) {
+    requestBody.thinking = model.thinking;
+  }
+
+  log_info(`execGptPrompt, ${service.endpoint}, ${model.name}, ${JSON.stringify(messages)}`);
 
   const response = await fetch(service.endpoint, {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      model: model,
-      messages: messages,
-      temperature: 0.7,
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
@@ -100,18 +113,26 @@ export const execGptPromptStream = async (
     content: "You are a helpful assistant.",
   });
 
-  log_info(`execGptPromptStream, ${service.endpoint}, ${model}, ${JSON.stringify(messages)}`);
+  // 根据thinking配置决定是否添加thinking参数
+  const requestBody: any = {
+    model: model.name,
+    messages: messages,
+    temperature: 0.7,
+    stream: true, // 启用流式输出
+  };
+
+  // 如果模型配置了thinking，则添加thinking参数
+  if (model.thinking) {
+    requestBody.thinking = model.thinking;
+  }
+
+  log_info(`execGptPromptStream, ${service.endpoint}, ${model.name}, ${JSON.stringify(messages)}`);
 
   try {
     const response = await fetch(service.endpoint, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        model: model,
-        messages: messages,
-        temperature: 0.7,
-        stream: true, // 启用流式输出
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {

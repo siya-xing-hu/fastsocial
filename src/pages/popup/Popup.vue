@@ -114,8 +114,8 @@ const serviceModelOptions = computed(() => {
     if (service.enabled && service.customModels && service.customModels.length > 0) {
       for (const model of service.customModels) {
         options.push({
-          value: `${service.id}:${model}`,
-          label: `${service.name}:${model}`
+          value: `${service.id}:${model.name}`,
+          label: `${service.name}:${model.name}`
         });
       }
     }

@@ -20,6 +20,11 @@ import {
 } from "../ui/prompt";
 import { createDialogContainer } from "../ui/dialog";
 
+// 扩展 HTMLElement 接口以支持定时器属性
+interface ExtendedHTMLElement extends HTMLElement {
+  _hideTimer?: NodeJS.Timeout | null;
+}
+
 enum XUrlEnum {
   HOME = "/home",
   POST = "/compose/post",
@@ -57,8 +62,8 @@ interface TranslateCache {
 const translateCache: Map<string, TranslateCache> = new Map();
 
 // 创建翻译提示框
-function createTranslateTooltip(): HTMLElement {
-  const tooltip = document.createElement("div");
+function createTranslateTooltip(): ExtendedHTMLElement {
+  const tooltip = document.createElement("div") as ExtendedHTMLElement;
   tooltip.className = "translate-tooltip fixed z-50";
   tooltip.style.cssText = `
     display: none;
@@ -79,12 +84,36 @@ function createTranslateTooltip(): HTMLElement {
     </div>
   `;
 
+  // 添加页面可见性变化监听
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      hideTranslateTooltip(tooltip as ExtendedHTMLElement);
+    }
+  });
+
+  // 添加页面卸载监听
+  window.addEventListener('beforeunload', () => {
+    hideTranslateTooltip(tooltip as ExtendedHTMLElement);
+  });
+
+  // 添加页面焦点变化监听
+  window.addEventListener('blur', () => {
+    hideTranslateTooltip(tooltip as ExtendedHTMLElement);
+  });
+
+  // 添加全局点击事件监听，点击其他地方时隐藏提示框
+  document.addEventListener('click', (e) => {
+    if (!tooltip.contains(e.target as Node)) {
+      hideTranslateTooltip(tooltip as ExtendedHTMLElement);
+    }
+  });
+
   return tooltip;
 }
 
 // 显示翻译提示框
 function showTranslateTooltip(
-  tooltip: HTMLElement,
+  tooltip: ExtendedHTMLElement,
   text: string,
   x: number,
   y: number,
@@ -100,11 +129,27 @@ function showTranslateTooltip(
   tooltip.style.display = "block";
   tooltip.style.left = `${x}px`;
   tooltip.style.top = `${y}px`;
+
+  // 清除之前的定时器
+  if (tooltip._hideTimer) {
+    clearTimeout(tooltip._hideTimer);
+  }
+
+  // 设置自动隐藏定时器（10秒后自动隐藏）
+  tooltip._hideTimer = setTimeout(() => {
+    hideTranslateTooltip(tooltip);
+  }, 10000);
 }
 
 // 隐藏翻译提示框
-function hideTranslateTooltip(tooltip: HTMLElement) {
+function hideTranslateTooltip(tooltip: ExtendedHTMLElement) {
   tooltip.style.display = "none";
+  
+  // 清除定时器
+  if (tooltip._hideTimer) {
+    clearTimeout(tooltip._hideTimer);
+    tooltip._hideTimer = null;
+  }
 }
 
 export async function ttTwitterInit(url: string): Promise<void> {
@@ -337,52 +382,61 @@ async function ttTwitterTranslate(): Promise<void> {
       }
 
       // 添加鼠标悬停事件
-      tweetWrapper.addEventListener(
-        "mouseenter",
-        ((e: Event) => {
-          const mouseEvent = e as MouseEvent;
+      const mouseEnterHandler = (e: Event) => {
+        const mouseEvent = e as MouseEvent;
+        const cache = translateCache.get(tweetId);
+        if (cache) {
+          showTranslateTooltip(
+            tooltip as ExtendedHTMLElement,
+            cache.translatedText,
+            mouseEvent.clientX + 10,
+            mouseEvent.clientY + 10,
+          );
+        }
+      };
+
+      const mouseLeaveHandler = () => {
+        hideTranslateTooltip(tooltip as ExtendedHTMLElement);
+      };
+
+      const mouseMoveHandler = (e: Event) => {
+        const mouseEvent = e as MouseEvent;
+        if (tooltip.style.display === "block") {
           const cache = translateCache.get(tweetId);
           if (cache) {
             showTranslateTooltip(
-              tooltip,
+              tooltip as ExtendedHTMLElement,
               cache.translatedText,
               mouseEvent.clientX + 10,
               mouseEvent.clientY + 10,
             );
           }
-        }) as EventListener,
-      );
+        }
+      };
 
-      tweetWrapper.addEventListener("mouseleave", () => {
-        hideTranslateTooltip(tooltip);
+      tweetWrapper.addEventListener("mouseenter", mouseEnterHandler);
+      tweetWrapper.addEventListener("mouseleave", mouseLeaveHandler);
+      tweetWrapper.addEventListener("mousemove", mouseMoveHandler);
+
+      // 添加元素移除监听，清理事件监听器
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          mutation.removedNodes.forEach((node) => {
+            if (node === tweetWrapper || (node as Element).contains?.(tweetWrapper)) {
+              hideTranslateTooltip(tooltip as ExtendedHTMLElement);
+              tweetWrapper.removeEventListener("mouseenter", mouseEnterHandler);
+              tweetWrapper.removeEventListener("mouseleave", mouseLeaveHandler);
+              tweetWrapper.removeEventListener("mousemove", mouseMoveHandler);
+              observer.disconnect();
+            }
+          });
+        });
       });
 
-      // 添加点击事件，隐藏翻译提示框
-      tweetWrapper.addEventListener(
-        "click",
-        () => {
-          hideTranslateTooltip(tooltip);
-        },
-      );
-
-      // 添加鼠标移动事件，使提示框跟随鼠标
-      tweetWrapper.addEventListener(
-        "mousemove",
-        ((e: Event) => {
-          const mouseEvent = e as MouseEvent;
-          if (tooltip.style.display === "block") {
-            const cache = translateCache.get(tweetId);
-            if (cache) {
-              showTranslateTooltip(
-                tooltip,
-                cache.translatedText,
-                mouseEvent.clientX + 10,
-                mouseEvent.clientY + 10,
-              );
-            }
-          }
-        }) as EventListener,
-      );
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+      });
     }
   });
 }

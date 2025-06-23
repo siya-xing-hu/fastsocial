@@ -45,7 +45,12 @@ export interface AIServiceConfig {
   id: string;
   name: string;
   endpoint: string;
-  customModels?: string[];
+  customModels: Array<{
+    name: string;
+    thinking?: {
+      type: "enabled" | "disabled" | "auto";
+    };
+  }>;
   enabled: boolean;
 }
 
@@ -87,7 +92,11 @@ const DEFAULT_CONFIG: Config = {
       id: "ollama-default",
       name: "Ollama",
       endpoint: "http://localhost:11434/v1/chat/completions",
-      customModels: ["llama3"],
+      customModels: [
+        {
+          name: "llama3",
+        },
+      ],
       enabled: true,
     },
     {
@@ -95,14 +104,25 @@ const DEFAULT_CONFIG: Config = {
       name: "Gemini",
       endpoint:
         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-      customModels: ["gemini-2.0-flash"],
+      customModels: [
+        {
+          name: "gemini-2.0-flash",
+        },
+      ],
       enabled: true,
     },
     {
       id: "openai-default",
       name: "OpenAI",
       endpoint: "https://api.openai.com/v1/chat/completions",
-      customModels: ["gpt-3.5-turbo", "gpt-4o-mini"],
+      customModels: [
+        {
+          name: "gpt-3.5-turbo",
+        },
+        {
+          name: "gpt-4o-mini",
+        },
+      ],
       enabled: false,
     },
   ],
