@@ -88,6 +88,7 @@ export async function execTranslate(
   const textContent = targetDiv.textContent;
   if (!textContent || !isContent(textContent)) return;
   
+  log("开始翻译", textContent);
   const translatedText = await translateContent(config.value.basic.translateProvider, textContent, isAdvanced);
   if (!translatedText) {
     log("No translated text.");

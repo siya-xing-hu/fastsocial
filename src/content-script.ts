@@ -10,6 +10,7 @@ import { ttTwitterInit } from "./components/social/_twitter";
 import { initEventListeners } from "./components/events/event-listeners";
 import "./tailwind.css";
 import "./assets/chat.css";
+import { handlerCommonUrl } from "./components/translate";
 
 async function init() {
   const now = new Date();
@@ -56,6 +57,10 @@ async function init() {
         break;
       case TabMessageTypeEnum.X_URl:
         ttTwitterInit(message.data.url);
+        break;
+      case TabMessageTypeEnum.COMMON_URL:
+        log("COMMON_URL", message.data.url);
+        handlerCommonUrl();
         break;
       default:
         break;

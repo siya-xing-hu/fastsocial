@@ -9,18 +9,25 @@ export enum TabMessageTypeEnum {
   CONFIG_UPDATE = "config-update",
   X_URl = "x-url",
   PH_URl = "ph-url",
+  COMMON_URL = "common-url",
 }
 
 export type TabMessage =
   | ConfigUpdateTabMessage
-  | PHUrlTabMessage
-  | XUrlTabMessage;
+  | CommonUrlTabMessage
+  | XUrlTabMessage
+  | PHUrlTabMessage;
 
 export interface ConfigUpdateTabMessage {
   type: TabMessageTypeEnum.CONFIG_UPDATE;
   data: {
     url: string | undefined;
   };
+}
+
+export interface CommonUrlTabMessage {
+  type: TabMessageTypeEnum.COMMON_URL;
+  data: { url: string };
 }
 
 export interface XUrlTabMessage {

@@ -135,10 +135,10 @@ function showTranslateTooltip(
     clearTimeout(tooltip._hideTimer);
   }
 
-  // 设置自动隐藏定时器（10秒后自动隐藏）
+  // 设置自动隐藏定时器（30秒后自动隐藏）
   tooltip._hideTimer = setTimeout(() => {
     hideTranslateTooltip(tooltip);
-  }, 10000);
+  }, 30000);
 }
 
 // 隐藏翻译提示框
@@ -367,7 +367,7 @@ async function ttTwitterTranslate(): Promise<void> {
       // 检查缓存
       if (!translateCache.has(tweetId)) {
         // 翻译并缓存
-        translateContent(TranslateChannelEnum.GOOGLE, originalText, false).then(
+        translateContent(config.value.basic.translateProvider, originalText, false).then(
           (translatedText) => {
             if (translatedText) {
               translateCache.set(tweetId, {

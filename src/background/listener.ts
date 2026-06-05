@@ -2,8 +2,8 @@ import { readyTabs } from ".";
 import { log } from "../common/logging";
 import {
   sendTabMessage,
+  TabMessage,
   TabMessageTypeEnum,
-  XUrlTabMessage,
 } from "../common/tabs-message";
 
 export async function addTabListener() {
@@ -36,17 +36,28 @@ function sendMessageToContentScript(tabId: number, url: string | undefined) {
   if (!url || typeof tabId != "number" || !readyTabs.has(tabId)) {
     return;
   }
+  log("sendMessageToContentScript", url);
+  let message: TabMessage;
   if (isTwitterUrl(url)) {
-    const message: XUrlTabMessage = {
+    message = {
       type: TabMessageTypeEnum.X_URl,
       data: {
         url: url,
       },
     };
-    sendTabMessage(tabId, message).then(() => {
-      log("ok");
-    });
+  } else {
+    log("common url", url);
+    message = {
+      type: TabMessageTypeEnum.COMMON_URL,
+      data: {
+        url: url,
+      },
+    };
   }
+
+  sendTabMessage(tabId, message).then(() => {
+    log("ok");
+  });
 }
 
 // 判断是否是 Twitter URL

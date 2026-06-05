@@ -125,8 +125,6 @@ async function executeTranslation(isShiftCtrl: boolean) {
   
   try {
     isTranslating = true;
-
-    log("开始翻译", mousePosition);
     
     if (window.location.hostname.includes("notion.site")) {
       await execNotionTranslate(mousePosition.x, mousePosition.y, isShiftCtrl);
