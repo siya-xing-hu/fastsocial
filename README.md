@@ -23,17 +23,3 @@ Build the app for production:
 ```bash
 pnpm build
 ```
-
-## Configure
-
-### API-KRY
-
-```url
-https://platform.openai.com/api-keys
-```
-
-### ORGANIZATION
-
-```url
-https://platform.openai.com/account/organization
-```

@@ -1,3 +1,5 @@
+import { log_error } from "../common/logging";
+
 // 定义重试函数的类型
 type RetryFunction = () => Promise<any>;
 
@@ -11,7 +13,7 @@ export function retry(
     const attempt = () => {
       fn().then(resolve).catch((error) => {
         if (maxLimit <= 0) {
-          console.error("Retry failed", error);
+          log_error("Retry failed", error);
         } else {
           setTimeout(attempt, interval * 1000);
           maxLimit--;
@@ -70,17 +72,20 @@ export function debounce(
 
 export function setInputText(inputEl: HTMLElement | null, text: string): void {
   try {
+    if (!inputEl) return;
+
+    // 使用剪贴板事件粘贴新内容
     const dataTransfer = new DataTransfer();
-    dataTransfer.setData("text/plain", text); // Prepare the text to be pasted
-    inputEl?.dispatchEvent(
-      new ClipboardEvent("paste", { // Simulate a paste event
+    dataTransfer.setData("text/plain", text);
+    inputEl.dispatchEvent(
+      new ClipboardEvent("paste", {
         bubbles: true,
         clipboardData: dataTransfer,
         cancelable: true,
       }),
     );
   } catch (e) {
-    console.error(e);
+    log_error(e);
   }
 }
 

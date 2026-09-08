@@ -2,22 +2,32 @@
  * @fileoverview 用于 chrome.runtime.sendMessage 的统一消息结构
  */
 
-import { log, warn } from "./logging";
+import { log, log_error } from "./logging";
 
 // 用于 chrome.tabs.sendMessage 的统一消息结构
 export enum TabMessageTypeEnum {
   CONFIG_UPDATE = "config-update",
   X_URl = "x-url",
   PH_URl = "ph-url",
+  COMMON_URL = "common-url",
 }
 
 export type TabMessage =
   | ConfigUpdateTabMessage
-  | PHUrlTabMessage
-  | XUrlTabMessage;
+  | CommonUrlTabMessage
+  | XUrlTabMessage
+  | PHUrlTabMessage;
 
 export interface ConfigUpdateTabMessage {
   type: TabMessageTypeEnum.CONFIG_UPDATE;
+  data: {
+    url: string | undefined;
+  };
+}
+
+export interface CommonUrlTabMessage {
+  type: TabMessageTypeEnum.COMMON_URL;
+  data: { url: string };
 }
 
 export interface XUrlTabMessage {
@@ -46,10 +56,14 @@ export interface ErrorTabMessageResponse {
 // 封装 chrome.runtime.sendMessage 统一处理
 export async function sendTabMessage(tabId: number, message: TabMessage) {
   try {
-    const response: TabMessageResponse = await chrome.tabs.sendMessage(tabId, message);
+    const response: TabMessageResponse = await chrome.tabs.sendMessage(
+      tabId,
+      message,
+    );
     log("received tabMessage response:", response);
     return response;
   } catch (e) {
-    warn(e)
-  } 
+    log_error("sendTabMessage error:", e);
+    return null;
+  }
 }

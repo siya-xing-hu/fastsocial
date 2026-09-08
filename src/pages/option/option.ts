@@ -1,6 +1,6 @@
-import "../tailwind.css";
-import "../assets/loader.css";
-import "../assets/success.css";
+import "../../tailwind.css";
+import "../../assets/loader.css";
+import "../../assets/success.css";
 import { createApp } from "vue";
 import Option from "./Option.vue";
 

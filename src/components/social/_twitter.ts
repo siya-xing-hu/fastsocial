@@ -1,0 +1,442 @@
+import { log_error } from "../../common/logging";
+import {
+  AIGenarateRuntimeMessage,
+  RuntimeMessageTypeEnum,
+  sendRuntimeMessage,
+} from "../../common/runtime-message";
+import {
+  config,
+  TranslateChannelEnum,
+  PromptConfig,
+} from "../../common/storage-config";
+import { setInputText } from "../../utils/kit";
+import { execObserver } from "../../utils/mutationObserver";
+import { translateContent } from "../translate/text-translator";
+import {
+  promptList,
+  PromptLocationEnum,
+  createPromptContainer,
+  HandlerParams,
+} from "../ui/prompt";
+import { createDialogContainer } from "../ui/dialog";
+
+// 扩展 HTMLElement 接口以支持定时器属性
+interface ExtendedHTMLElement extends HTMLElement {
+  _hideTimer?: NodeJS.Timeout | null;
+}
+
+enum XUrlEnum {
+  HOME = "/home",
+  POST = "/compose/post",
+  MESSAGES = "^/messages/[^/]+$", // 动态路径使用正则表达式
+  OTHER = "/other",
+}
+
+function getXUrlEnum(url: string): XUrlEnum {
+  const urlPath = new URL(url).pathname; // 提取 URL 路径
+  // 获取所有枚举值
+  const values = Object.values(XUrlEnum);
+  // 检查 urlPath 是否以某个枚举值结尾
+  for (const value of values) {
+    if (value.startsWith("^")) { // 如果枚举值是正则表达式
+      const regex = new RegExp(value);
+      if (regex.test(urlPath)) {
+        return value as XUrlEnum;
+      }
+    } else if (urlPath.endsWith(value)) { // 静态路径匹配
+      return value as XUrlEnum;
+    }
+  }
+  return XUrlEnum.OTHER;
+}
+
+// 定义翻译缓存接口
+interface TranslateCache {
+  id: string;
+  originalText: string;
+  translatedText: string;
+  element: HTMLElement;
+}
+
+// 存储翻译缓存
+const translateCache: Map<string, TranslateCache> = new Map();
+
+// 创建翻译提示框
+function createTranslateTooltip(): ExtendedHTMLElement {
+  const tooltip = document.createElement("div") as ExtendedHTMLElement;
+  tooltip.className = "translate-tooltip fixed z-50";
+  tooltip.style.cssText = `
+    display: none;
+    left: 0;
+    top: 0;
+  `;
+  document.body.appendChild(tooltip);
+
+  // 创建一个简单的DOM结构，使用固定的白底黑字样式，不受页面主题影响
+  tooltip.innerHTML = `
+    <div style="background-color: white; color: #333; border-radius: 0.5rem; padding: 0.75rem; margin: 0.5rem 0; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);">
+      <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <svg xmlns="http://www.w3.org/2000/svg" style="height: 1rem; width: 1rem; color: #666;" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M7 2a1 1 0 011 1v1h3a1 1 0 110 2H9.578a18.87 18.87 0 01-1.724 4.78c.29.354.596.696.914 1.026a1 1 0 11-1.44 1.389 21.034 21.034 0 01-.554-.6 19.098 19.098 0 01-3.107 3.567 1 1 0 01-1.334-1.49 17.087 17.087 0 003.13-3.733 18.992 18.992 0 01-1.487-2.494 1 1 0 111.79-.89c.234.47.489.928.764 1.372.417-.934.752-1.913.997-2.927H3a1 1 0 110-2h3V3a1 1 0 011-1zm6 6a1 1 0 01.894.553l2.991 5.982a.869.869 0 01.02.037l.99 1.98a1 1 0 11-1.79.895L15.383 16h-4.764l-.724 1.447a1 1 0 11-1.788-.894l.99-1.98.019-.038 2.99-5.982A1 1 0 0113 8zm-1.382 6h2.764L13 11.236 11.618 14z" clip-rule="evenodd" />
+        </svg>
+      </div>
+      <span style="display: block; white-space: pre-wrap; line-height: 1.5; font-size: 0.875rem; color: #333;" class="translate-content"></span>
+    </div>
+  `;
+
+  // 添加页面可见性变化监听
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      hideTranslateTooltip(tooltip as ExtendedHTMLElement);
+    }
+  });
+
+  // 添加页面卸载监听
+  window.addEventListener('beforeunload', () => {
+    hideTranslateTooltip(tooltip as ExtendedHTMLElement);
+  });
+
+  // 添加页面焦点变化监听
+  window.addEventListener('blur', () => {
+    hideTranslateTooltip(tooltip as ExtendedHTMLElement);
+  });
+
+  // 添加全局点击事件监听，点击其他地方时隐藏提示框
+  document.addEventListener('click', (e) => {
+    if (!tooltip.contains(e.target as Node)) {
+      hideTranslateTooltip(tooltip as ExtendedHTMLElement);
+    }
+  });
+
+  return tooltip;
+}
+
+// 显示翻译提示框
+function showTranslateTooltip(
+  tooltip: ExtendedHTMLElement,
+  text: string,
+  x: number,
+  y: number,
+) {
+  console.log("显示翻译提示框:", text);
+
+  // 直接更新内容
+  const contentElement = tooltip.querySelector(".translate-content");
+  if (contentElement) {
+    contentElement.textContent = text;
+  }
+
+  tooltip.style.display = "block";
+  tooltip.style.left = `${x}px`;
+  tooltip.style.top = `${y}px`;
+
+  // 清除之前的定时器
+  if (tooltip._hideTimer) {
+    clearTimeout(tooltip._hideTimer);
+  }
+
+  // 设置自动隐藏定时器（30秒后自动隐藏）
+  tooltip._hideTimer = setTimeout(() => {
+    hideTranslateTooltip(tooltip);
+  }, 30000);
+}
+
+// 隐藏翻译提示框
+function hideTranslateTooltip(tooltip: ExtendedHTMLElement) {
+  tooltip.style.display = "none";
+  
+  // 清除定时器
+  if (tooltip._hideTimer) {
+    clearTimeout(tooltip._hideTimer);
+    tooltip._hideTimer = null;
+  }
+}
+
+export async function ttTwitterInit(url: string): Promise<void> {
+  switch (getXUrlEnum(url)) {
+    case XUrlEnum.HOME:
+      execObserver(document.body, async () => {
+        return await ttTwitterHome();
+      });
+      break;
+    case XUrlEnum.POST:
+      execObserver(document.body, async () => {
+        return await ttTwitterPost();
+      });
+      break;
+    default:
+      break;
+  }
+
+  if (config.value.basic.autoTranslate) {
+    execObserver(document.body, async () => {
+      if (config.value.basic.autoTranslate) {
+        await ttTwitterTranslate();
+        return false;
+      }
+      return false;
+    });
+  }
+}
+
+async function ttTwitterHome(): Promise<boolean> {
+  const mainWrapper = document.querySelector(
+    "main[role=main] div[data-testid=primaryColumn]",
+  );
+  const tweetTextareaWrapper = mainWrapper?.querySelector(
+    "div[data-testid=tweetTextarea_0]",
+  ) as HTMLElement;
+  const toolBarParentWrapper = mainWrapper?.querySelector(
+    "div[data-testid=toolBar]",
+  );
+
+  if (!toolBarParentWrapper || !tweetTextareaWrapper) {
+    return false;
+  }
+
+  if (toolBarParentWrapper.getAttribute("tt-prompt-is-done") === "true") {
+    return true;
+  }
+
+  createPromptContainer(
+    toolBarParentWrapper as HTMLElement,
+    PromptLocationEnum.Previous,
+  );
+
+  // 添加POST场景按钮
+  promptList.value.push(
+    ...config.value.prompts.post
+      .filter((p) => p.enabled)
+      .map((p) => ({
+        ...p,
+        params: { data: { mainWrapper } },
+        handler: generateHandle,
+      }))
+  );
+
+  return true;
+}
+
+async function ttTwitterPost(): Promise<boolean> {
+  const mainWrapper = document.querySelector("div[role=dialog]");
+  const tweetTextareaWrapper = mainWrapper?.querySelector(
+    "div[data-testid=tweetTextarea_0]",
+  ) as HTMLElement | null;
+  const toolBarParentWrapper = mainWrapper?.querySelector(
+    "div[data-testid=toolBar]",
+  );
+
+  if (!toolBarParentWrapper || !tweetTextareaWrapper) {
+    return false;
+  }
+
+  if (toolBarParentWrapper.getAttribute("tt-prompt-is-done") === "true") {
+    return true;
+  }
+
+  createPromptContainer(
+    toolBarParentWrapper as HTMLElement,
+    PromptLocationEnum.Previous,
+  );
+
+  const replayTweetTextWrapper = mainWrapper?.querySelector(
+    "div[data-testid=tweetText",
+  ) as HTMLElement;
+
+  if (replayTweetTextWrapper) {
+    // 回复场景
+    const replayContent = replayTweetTextWrapper.textContent || "";
+    if (replayContent === "") {
+      return false;
+    }
+
+    // 从配置中获取回复按钮
+    promptList.value.push(
+      ...config.value.prompts.reply
+        .filter((p) => p.enabled)
+        .map((p) => ({
+          ...p,
+          params: { data: { mainWrapper, replayContent } },
+          handler: generateHandle,
+        }))
+    );
+  } else {
+    // 发推场景
+    promptList.value.push(
+      ...config.value.prompts.post
+        .filter((p) => p.enabled)
+        .map((p) => ({
+          ...p,
+          params: { data: { mainWrapper } },
+          handler: generateHandle,
+        }))
+    );
+  }
+
+  return true;
+}
+
+async function generateHandle(
+  prompt: PromptConfig,
+  params: HandlerParams,
+): Promise<void> {
+  const { mainWrapper, replayContent } = params.data;
+  if (!mainWrapper) {
+    return;
+  }
+
+  const tweetTextareaWrapper = mainWrapper.querySelector(
+    "div[data-testid=tweetTextarea_0]",
+  ) as HTMLElement;
+
+  if (!tweetTextareaWrapper) {
+    return;
+  }
+
+  const message: AIGenarateRuntimeMessage = {
+    type: RuntimeMessageTypeEnum.AI_GENARATE,
+    data: {
+      aiProvider: config.value.basic.aiProvider,
+      messages: [
+        {
+          role: "user",
+          content: prompt.prompt.replace("{replyContent}", replayContent || "").replace("{userContent}", tweetTextareaWrapper.textContent || ""),
+        },
+      ],
+    },
+  };
+
+  const response = await sendRuntimeMessage(message);
+  if (!response.is_ok) {
+    log_error("AI generate failed", response.error);
+    return;
+  }
+
+  const generateText = response.data;
+  createDialogContainer(
+    generateText,
+    () => {
+      setInputText(tweetTextareaWrapper, generateText);
+    },
+  );
+}
+
+async function ttTwitterTranslate(): Promise<void> {
+  const mainWrapper = document.querySelector(
+    "main[role=main] div[data-testid=primaryColumn]",
+  );
+  const ariaLabelWrapper = mainWrapper?.querySelector(
+    "section[role=region] div[aria-label]",
+  ) as HTMLElement | null;
+  if (!ariaLabelWrapper) {
+    return;
+  }
+
+  let tweetWrapperList = [
+    ...ariaLabelWrapper.querySelectorAll(
+      `div[aria-label] article[role=article]:not([tabindex="-1"]) div[lang]:not([data-has-translator=true]):not([lang^=zh])`,
+    ),
+  ];
+
+  if (!tweetWrapperList.length) return;
+
+  // 创建翻译提示框
+  const tooltip = createTranslateTooltip();
+
+  tweetWrapperList.forEach((tweetWrapper) => {
+    tweetWrapper.setAttribute("data-has-translator", "true");
+    const tweetId = tweetWrapper.getAttribute("id") ||
+      Math.random().toString(36).substr(2, 9);
+
+    // 获取所有文本内容
+    const textElements = [...tweetWrapper.children].filter(
+      (child) => child.tagName === "SPAN",
+    );
+    const textContents: string[] = [];
+
+    textElements.forEach((span) => {
+      const textContent = span.textContent;
+      if (textContent) {
+        textContents.push(textContent);
+      }
+    });
+
+    if (textContents.length > 0) {
+      const originalText = textContents.join(" ");
+
+      // 检查缓存
+      if (!translateCache.has(tweetId)) {
+        // 翻译并缓存
+        translateContent(config.value.basic.translateProvider, originalText, false).then(
+          (translatedText) => {
+            if (translatedText) {
+              translateCache.set(tweetId, {
+                id: tweetId,
+                originalText,
+                translatedText,
+                element: tweetWrapper as HTMLElement,
+              });
+            }
+          },
+        );
+      }
+
+      // 添加鼠标悬停事件
+      const mouseEnterHandler = (e: Event) => {
+        const mouseEvent = e as MouseEvent;
+        const cache = translateCache.get(tweetId);
+        if (cache) {
+          showTranslateTooltip(
+            tooltip as ExtendedHTMLElement,
+            cache.translatedText,
+            mouseEvent.clientX + 10,
+            mouseEvent.clientY + 10,
+          );
+        }
+      };
+
+      const mouseLeaveHandler = () => {
+        hideTranslateTooltip(tooltip as ExtendedHTMLElement);
+      };
+
+      const mouseMoveHandler = (e: Event) => {
+        const mouseEvent = e as MouseEvent;
+        if (tooltip.style.display === "block") {
+          const cache = translateCache.get(tweetId);
+          if (cache) {
+            showTranslateTooltip(
+              tooltip as ExtendedHTMLElement,
+              cache.translatedText,
+              mouseEvent.clientX + 10,
+              mouseEvent.clientY + 10,
+            );
+          }
+        }
+      };
+
+      tweetWrapper.addEventListener("mouseenter", mouseEnterHandler);
+      tweetWrapper.addEventListener("mouseleave", mouseLeaveHandler);
+      tweetWrapper.addEventListener("mousemove", mouseMoveHandler);
+
+      // 添加元素移除监听，清理事件监听器
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          mutation.removedNodes.forEach((node) => {
+            if (node === tweetWrapper || (node as Element).contains?.(tweetWrapper)) {
+              hideTranslateTooltip(tooltip as ExtendedHTMLElement);
+              tweetWrapper.removeEventListener("mouseenter", mouseEnterHandler);
+              tweetWrapper.removeEventListener("mouseleave", mouseLeaveHandler);
+              tweetWrapper.removeEventListener("mousemove", mouseMoveHandler);
+              observer.disconnect();
+            }
+          });
+        });
+      });
+
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+      });
+    }
+  });
+}

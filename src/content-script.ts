@@ -2,24 +2,44 @@
  * @fileoverview The **main** content script.
  */
 
-import logger, { log } from "./common/logging";
-import "./tailwind.css";
-import { execNotionTranslate, execTranslate } from "./components/translate";
-import { ttTwitterInit } from "./components/_twitter";
+import { log } from "./common/logging";
+import { initConfig } from "./common/storage-config";
 import { TabMessage, TabMessageTypeEnum } from "./common/tabs-message";
-import { ttProductHuntInit } from "./components/_producthunt";
-import { config, initConfig } from "./config/storage-config";
+import { RuntimeMessageTypeEnum } from "./common/runtime-message";
+import { ttTwitterInit } from "./components/social/_twitter";
+import { initEventListeners } from "./components/events/event-listeners";
+import "./tailwind.css";
+import "./assets/chat.css";
+import { handlerCommonUrl } from "./components/translate";
 
 async function init() {
   const now = new Date();
-  logger.log("### init ###", now.toISOString());
+  log("### init ###", now.toISOString());
+
+  // 初始化配置
+  await initConfig();
+
+  // 初始化事件监听器
+  initEventListeners();
+
+  // 发送就绪信号
+  chrome.runtime.sendMessage({
+    type: RuntimeMessageTypeEnum.CONTENT_SCRIPT_READY,
+  });
+
+  // 如果是 Twitter 页面，立即初始化
+  if (
+    window.location.href.includes("x.com")
+  ) {
+    ttTwitterInit(window.location.href);
+  }
 
   chrome.runtime.onMessage.addListener(function (
     message: TabMessage,
     sender,
     sendResponse,
   ) {
-    logger.log(
+    log(
       sender.tab
         ? "from a content script: " + sender.tab.url
         : "from the extension: ",
@@ -29,66 +49,28 @@ async function init() {
     switch (message.type) {
       case TabMessageTypeEnum.CONFIG_UPDATE:
         initConfig().then(() => {
-          log("CONFIG_UPDATE DONE")
-        })
+          log("CONFIG_UPDATE DONE");
+          if (message.data.url) {
+            ttTwitterInit(message.data.url);
+          }
+        });
         break;
       case TabMessageTypeEnum.X_URl:
         ttTwitterInit(message.data.url);
         break;
-      case TabMessageTypeEnum.PH_URl:
-        ttProductHuntInit(message.data.url);
+      case TabMessageTypeEnum.COMMON_URL:
+        log("COMMON_URL", message.data.url);
+        handlerCommonUrl();
+        break;
+      default:
         break;
     }
   });
-
-  await initConfig();
-
-  let currentClientX = 0;
-  let currentClientY = 0;
-  let isTranslating = false;
-  let shiftKey = false;
-  let ctrlKey = false;
-  let eventKey = "";
-
-  // 监听鼠标悬停事件
-  document.addEventListener("mouseover", (event) => {
-    currentClientX = event.clientX;
-    currentClientY = event.clientY;
-  });
-
-  // 监听抬起事件
-  document.addEventListener("keyup", async () => {
-    const shift = config.value.basic.shortcut.shift;
-    const ctrl = config.value.basic.shortcut.ctrl;
-    if ((shift && shiftKey && eventKey === "") || (ctrl && ctrlKey && eventKey === "Control")) {
-      if (currentClientX && currentClientY) {
-        try {
-          if (isTranslating) {
-            return;
-          }
-          isTranslating = true;
-          if (window.location.hostname.includes("notion.site")) {
-            await execNotionTranslate(currentClientX, currentClientY);
-          } else {
-            await execTranslate(currentClientX, currentClientY);
-          }
-        } catch (error) {
-          console.error(error);
-        } finally {
-          isTranslating = false;
-        }
-      }
-    }
-  });
-
-  // 监听按下事件
-  document.addEventListener("keydown", async (event) => {
-    shiftKey = event.shiftKey;
-    ctrlKey = event.ctrlKey;
-    eventKey = event.key;
-  });
 }
 
-init().then(() => {
-  console.log("init success")
-})
+// 确保在 DOM 加载完成后初始化
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}
