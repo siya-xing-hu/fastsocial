@@ -8,6 +8,8 @@ import tsconfigPaths from "vite-tsconfig-paths";
 export default defineConfig({
   plugins: [tsconfigPaths(), vue(), crx({ manifest })],
   build: {
+    // Avoid sharing preloads across extension pages and isolated content scripts.
+    modulePreload: false,
     assetsInlineLimit: 0,
     rollupOptions: {
       input: {
