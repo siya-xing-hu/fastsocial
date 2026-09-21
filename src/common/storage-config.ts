@@ -11,6 +11,7 @@ export type PromptScenes = typeof promptScenes[number];
 
 // 定义翻译渠道
 export enum TranslateChannelEnum {
+  AUTO = "auto",
   AI = "ai",
   GOOGLE = "google",
   DEEPL = "deepl",
@@ -72,6 +73,8 @@ interface Config {
   aiServices: AIServiceConfig[];
   translationService: {
     translatePrompt: string; // 添加翻译 prompt 配置
+    deeplApiEndpoint: string;
+    fallbackDurationMinutes: number;
   };
   prompts: {
     post: PromptConfig[];
@@ -128,6 +131,8 @@ const DEFAULT_CONFIG: Config = {
   ],
   translationService: {
     translatePrompt: "", // 添加默认翻译 prompt
+    deeplApiEndpoint: "https://api.deepl.com/v2/translate",
+    fallbackDurationMinutes: 5,
   },
   prompts: {
     post: [
@@ -172,6 +177,37 @@ const DEFAULT_API_KEYS: ApiKeys = {
 export const config = ref<Config>(DEFAULT_CONFIG);
 export const apiKeys = ref<ApiKeys>(DEFAULT_API_KEYS);
 
+function mergeStoredConfig(storedConfig: Partial<Config>): Config {
+  return {
+    ...DEFAULT_CONFIG,
+    ...storedConfig,
+    basic: {
+      ...DEFAULT_CONFIG.basic,
+      ...storedConfig.basic,
+    },
+    translationService: {
+      ...DEFAULT_CONFIG.translationService,
+      ...storedConfig.translationService,
+    },
+    prompts: {
+      post: storedConfig.prompts?.post ?? DEFAULT_CONFIG.prompts.post,
+      reply: storedConfig.prompts?.reply ?? DEFAULT_CONFIG.prompts.reply,
+    },
+    aiServices: storedConfig.aiServices ?? DEFAULT_CONFIG.aiServices,
+  };
+}
+
+function mergeStoredApiKeys(storedApiKeys: Partial<ApiKeys>): ApiKeys {
+  return {
+    ...DEFAULT_API_KEYS,
+    ...storedApiKeys,
+    aiServices: {
+      ...DEFAULT_API_KEYS.aiServices,
+      ...storedApiKeys.aiServices,
+    },
+  };
+}
+
 // 修改初始化函数，分别获取配置和 API 密钥
 export async function initConfig() {
   const storage = await chrome.storage.local.get();
@@ -179,11 +215,11 @@ export async function initConfig() {
   const storedApiKeys = storage["fast-social-api-keys"];
 
   if (storedConfig) {
-    config.value = JSON.parse(storedConfig);
+    config.value = mergeStoredConfig(JSON.parse(storedConfig));
   }
 
   if (storedApiKeys) {
-    apiKeys.value = JSON.parse(storedApiKeys);
+    apiKeys.value = mergeStoredApiKeys(JSON.parse(storedApiKeys));
   }
 }
 

@@ -7,6 +7,9 @@ const isDevHostsEnabled = true;
 const prodHostPermissions = [
   "https://x.com/*",
   "https://*.x.com/*",
+  "https://translate.googleapis.com/*",
+  "https://api.deepl.com/*",
+  "https://api-free.deepl.com/*",
 ];
 
 const devHostPermissions = [

@@ -3,17 +3,28 @@ import { log_error } from "../common/logging";
 // 定义重试函数的类型
 type RetryFunction = () => Promise<any>;
 
+export class NonRetryableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NonRetryableError";
+  }
+}
+
 export function retry(
   fn: RetryFunction,
   interval = 5,
   maxLimit = 5,
   intervalStep = 0,
 ): Promise<any> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const attempt = () => {
       fn().then(resolve).catch((error) => {
-        if (maxLimit <= 0) {
+        if (error instanceof NonRetryableError) {
+          log_error("Request failed", error);
+          reject(error);
+        } else if (maxLimit <= 0) {
           log_error("Retry failed", error);
+          reject(error);
         } else {
           setTimeout(attempt, interval * 1000);
           maxLimit--;

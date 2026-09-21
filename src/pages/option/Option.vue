@@ -64,6 +64,7 @@
                       v-model="config.basic.translateProvider"
                       class="form-input"
                     >
+                      <option value="auto">自动（Google 优先）</option>
                       <option value="google">Google</option>
                       <option value="ai">AI</option>
                       <option value="deepl">DeepL</option>
@@ -419,6 +420,32 @@
             </div>
           </div>
 
+          <!-- 自动切换配置 -->
+          <div
+            class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
+          >
+            <div class="p-6">
+              <h3 class="text-xl font-semibold text-gray-800 mb-6">
+                自动切换配置
+              </h3>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2"
+                  >DeepL 保持时长（分钟）</label
+                >
+                <input
+                  v-model.number="config.translationService.fallbackDurationMinutes"
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="form-input"
+                />
+                <p class="mt-2 text-sm text-gray-500">
+                  自动模式下，Google 遇到限流或验证码后会切换至 DeepL；到期后重新尝试 Google。
+                </p>
+              </div>
+            </div>
+          </div>
+
           <!-- DeepL 配置 -->
           <div
             class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
@@ -428,6 +455,22 @@
                 DeepL 配置
               </h3>
               <div class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2"
+                    >API 类型</label
+                  >
+                  <select
+                    v-model="config.translationService.deeplApiEndpoint"
+                    class="form-input"
+                  >
+                    <option value="https://api.deepl.com/v2/translate">
+                      Developer / Growth
+                    </option>
+                    <option value="https://api-free.deepl.com/v2/translate">
+                      旧版 API Free
+                    </option>
+                  </select>
+                </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-2"
                     >API Key</label
@@ -442,7 +485,7 @@
                   <p class="mt-2 text-sm text-gray-500">
                     在
                     <a
-                      href="https://www.deepl.com/pro-api"
+                      href="https://www.deepl.com/en/developers"
                       target="_blank"
                       class="text-blue-600 hover:underline"
                       >DeepL API</a

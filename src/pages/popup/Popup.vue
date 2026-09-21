@@ -50,6 +50,7 @@
             @change="onInput()"
             class="pl-3"
           >
+            <option value="auto">自动（Google 优先）</option>
             <option value="google">Google</option>
             <option value="deepl">DeepL</option>
             <option value="ai">AI</option>
