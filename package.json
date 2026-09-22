@@ -1,44 +1,23 @@
 {
-  "name": "fast-social-extension",
+  "name": "fast-social",
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
-    "dev": "vite",
+    "dev:extension": "pnpm --filter @fast-social/extension dev",
     "dev:server": "pnpm --filter @fast-social/server dev",
-    "build-dev": "vue-tsc && vite build --mode development",
-    "build": "vue-tsc && vite build",
+    "build": "pnpm build:contracts && pnpm build:server && pnpm build:extension",
+    "build:contracts": "pnpm --filter @fast-social/contracts build",
+    "build:extension": "pnpm --filter @fast-social/extension build",
     "build:server": "pnpm --filter @fast-social/server build",
+    "test": "pnpm test:server && pnpm test:extension",
     "test:server": "pnpm --filter @fast-social/server test",
-    "test:extension": "node --experimental-strip-types --test src/background/local-service-client.test.ts",
-    "check": "pnpm test:server && pnpm test:extension && pnpm build:server && pnpm build"
-  },
-  "devDependencies": {
-    "@crxjs/vite-plugin": "2.0.0-beta.26",
-    "@types/chrome": "^0.0.254",
-    "@types/lodash": "^4.14.202",
-    "@types/uuid": "^9.0.7",
-    "@vitejs/plugin-vue": "^4.6.2",
-    "autoprefixer": "^10.4.16",
-    "postcss": "^8.4.32",
-    "tailwindcss": "^3.4.0",
-    "typescript": "^5.2.2",
-    "vite": "^4.5.1",
-    "vite-tsconfig-paths": "^4.2.2",
-    "vue-tsc": "^1.8.27"
-  },
-  "dependencies": {
-    "@fast-social/contracts": "workspace:*",
-    "@headlessui/vue": "^1.7.16",
-    "@heroicons/vue": "^2.1.1",
-    "@types/markdown-it": "^14.1.2",
-    "hotkeys-js": "^3.13.9",
-    "lodash": "^4.17.21",
-    "lucide-vue-next": "^0.503.0",
-    "markdown-it": "^14.1.0",
-    "uuid": "^9.0.1",
-    "vue": "^3.4.6",
-    "vue-markdown-it": "^0.9.4"
+    "test:extension": "pnpm --filter @fast-social/extension test",
+    "check": "pnpm build:contracts && pnpm test && pnpm build:server && pnpm build:extension",
+    "start:server": "pnpm --filter @fast-social/server start"
   },
   "packageManager": "pnpm@11.19.0"
 }

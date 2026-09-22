@@ -1,6 +1,6 @@
 # Fast Social 本地监控服务
 
-这是供个人使用的本地服务。它监听 `127.0.0.1:3000`，将配置写入被 Git 忽略的 `server/data/fastsocial.db`，负责：
+这是供个人使用的本地服务。它监听 `127.0.0.1:3000`，将配置写入被 Git 忽略的根目录 `.data/fastsocial.db`，负责：
 
 - 直接请求 X Web 内部接口读取指定用户的新帖子；
 - 使用 OpenAI 兼容模型按每条规则的 Prompt 判断是否命中；
@@ -14,17 +14,38 @@ Google、DeepL、目标语言和自动翻译仍保存在浏览器扩展中，不
 需要 Node.js 24+ 和 pnpm：
 
 ```bash
+# 仓库根目录
 pnpm install
 pnpm dev:server
 ```
 
-服务健康检查为 `http://127.0.0.1:3000/health`。生产式启动可运行：
+也可以从服务端模块内启动：
 
 ```bash
-pnpm --filter @fast-social/server start
+cd apps/server
+pnpm dev
+```
+
+服务健康检查为 `http://127.0.0.1:3000/health`。在 `apps/server` 目录构建并启动 JavaScript 产物：
+
+```bash
+pnpm build
+pnpm start
+```
+
+也可以从仓库根目录运行：
+
+```bash
+pnpm build:server
+pnpm start:server
 ```
 
 如果 3000 端口已被其他程序占用，需要先关闭占用程序；扩展当前固定连接该地址。
+
+可用环境变量：
+
+- `FAST_SOCIAL_DATA_DIR`：覆盖 SQLite 数据目录，建议使用绝对路径。
+- `FAST_SOCIAL_PORT`：覆盖监听端口；插件正常使用时仍需保持为 `3000`。
 
 ## 配置顺序
 
@@ -63,7 +84,12 @@ pnpm dev:server
 ## 检查
 
 ```bash
+# 仓库根目录，检查所有模块
 pnpm check
+
+# apps/server 目录，仅检查服务端
+pnpm test
+pnpm build
 ```
 
 常见错误：

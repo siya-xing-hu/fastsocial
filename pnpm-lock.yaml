@@ -6,11 +6,13 @@ settings:
 
 importers:
 
-  .:
+  .: {}
+
+  apps/extension:
     dependencies:
       '@fast-social/contracts':
         specifier: workspace:*
-        version: link:shared/contracts
+        version: link:../../packages/contracts
       '@headlessui/vue':
         specifier: ^1.7.16
         version: 1.7.22(vue@3.4.27(typescript@5.4.5))
@@ -51,6 +53,9 @@ importers:
       '@types/lodash':
         specifier: ^4.14.202
         version: 4.17.4
+      '@types/node':
+        specifier: ^24.5.2
+        version: 24.13.6
       '@types/uuid':
         specifier: ^9.0.7
         version: 9.0.8
@@ -67,7 +72,7 @@ importers:
         specifier: ^3.4.0
         version: 3.4.3
       typescript:
-        specifier: ^5.2.2
+        specifier: 5.4.5
         version: 5.4.5
       vite:
         specifier: ^4.5.1
@@ -79,11 +84,11 @@ importers:
         specifier: ^1.8.27
         version: 1.8.27(typescript@5.4.5)
 
-  server:
+  apps/server:
     dependencies:
       '@fast-social/contracts':
         specifier: workspace:*
-        version: link:../shared/contracts
+        version: link:../../packages/contracts
       fastify:
         specifier: ^5.6.2
         version: 5.12.5
@@ -91,11 +96,14 @@ importers:
       '@types/node':
         specifier: ^24.5.2
         version: 24.13.6
+      esbuild:
+        specifier: ^0.18.20
+        version: 0.18.20
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
 
-  shared/contracts:
+  packages/contracts:
     devDependencies:
       typescript:
         specifier: ^5.9.2

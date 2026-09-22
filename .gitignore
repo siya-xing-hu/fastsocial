@@ -7,7 +7,9 @@
 node_modules
 .pnpm-store/
 dist/
+.data/
 server/data/
+apps/server/data/
 
 # IDE
 .vscode/*

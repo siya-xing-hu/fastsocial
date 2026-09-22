@@ -1,7 +1,6 @@
 packages:
-  - "."
-  - "server"
-  - "shared/contracts"
+  - "apps/*"
+  - "packages/*"
 
 allowBuilds:
   esbuild: true
