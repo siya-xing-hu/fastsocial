@@ -5,7 +5,7 @@ import { defineManifest } from "@crxjs/vite-plugin";
 const isDevHostsEnabled = true;
 
 const prodHostPermissions = [
-  "http://127.0.0.1:3000/*",
+  "http://127.0.0.1:5127/*",
   "https://x.com/*",
   "https://*.x.com/*",
   "https://translate.googleapis.com/*",
@@ -14,7 +14,7 @@ const prodHostPermissions = [
 ];
 
 const devHostPermissions = [
-  "http://localhost:3000/*",
+  "http://localhost:5127/*",
   "http://localhost:9000/*",
 ];
 

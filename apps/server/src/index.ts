@@ -2,6 +2,7 @@ import { access, mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { createApp } from "./app.ts";
+import { resolveHost, resolvePort } from "./runtime-config.ts";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 
@@ -28,17 +29,6 @@ async function resolveDataDirectory(): Promise<string> {
   return resolve(workspaceRoot ?? process.cwd(), ".data");
 }
 
-function resolvePort(): number {
-  const configuredPort = process.env.FAST_SOCIAL_PORT?.trim();
-  if (!configuredPort) return 3000;
-
-  const port = Number(configuredPort);
-  if (!Number.isInteger(port) || port < 0 || port > 65_535) {
-    throw new Error("FAST_SOCIAL_PORT must be an integer between 0 and 65535");
-  }
-  return port;
-}
-
 async function start(): Promise<void> {
   const dataDirectory = await resolveDataDirectory();
   await mkdir(dataDirectory, { recursive: true });
@@ -48,7 +38,7 @@ async function start(): Promise<void> {
     startScheduler: true,
   });
 
-  const address = await app.listen({ host: "127.0.0.1", port: resolvePort() });
+  const address = await app.listen({ host: resolveHost(), port: resolvePort() });
   console.log(`Fast Social local service listening at ${address}`);
 
   for (const signal of ["SIGINT", "SIGTERM"] as const) {

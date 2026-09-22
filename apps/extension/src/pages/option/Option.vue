@@ -61,7 +61,7 @@
 
       <section v-else>
         <div class="mb-6 flex items-start justify-between gap-4">
-          <PageTitle title="本地监控服务" description="AI、X Cookie、Telegram 与定时监控统一由 127.0.0.1:3000 管理。" />
+          <PageTitle title="本地监控服务" description="AI、X Cookie、Telegram 与定时监控统一由 127.0.0.1:5127 管理。" />
           <button class="button-secondary shrink-0" :disabled="loading" @click="refreshService">刷新状态</button>
         </div>
 

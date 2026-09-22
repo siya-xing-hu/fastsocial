@@ -3,13 +3,21 @@ import test from "node:test";
 import { LocalServiceClient, LocalServiceError } from "./local-service-client.ts";
 
 test("local service client reads enveloped and health responses", async () => {
+  const urls: string[] = [];
   const responses = [
     new Response(JSON.stringify({ ok: true, data: { value: 1 } }), { headers: { "content-type": "application/json" } }),
     new Response(JSON.stringify({ ok: true, version: "1", uptimeSeconds: 0, database: "ok" }), { headers: { "content-type": "application/json" } }),
   ];
-  const client = new LocalServiceClient(async () => responses.shift()!);
+  const client = new LocalServiceClient(async (input) => {
+    urls.push(String(input));
+    return responses.shift()!;
+  });
   assert.deepEqual(await client.request("/api/value"), { value: 1 });
   assert.deepEqual(await client.request("/health"), { ok: true, version: "1", uptimeSeconds: 0, database: "ok" });
+  assert.deepEqual(urls, [
+    "http://127.0.0.1:5127/api/value",
+    "http://127.0.0.1:5127/health",
+  ]);
 });
 
 test("local service client reports API and connection failures", async () => {

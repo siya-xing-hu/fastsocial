@@ -1,6 +1,6 @@
 # Fast Social 本地监控服务
 
-这是供个人使用的本地服务。它监听 `127.0.0.1:3000`，将配置写入被 Git 忽略的根目录 `.data/fastsocial.db`，负责：
+这是供个人使用的本地服务。它默认监听 `127.0.0.1:5127`，将配置写入被 Git 忽略的根目录 `.data/fastsocial.db`，负责：
 
 - 直接请求 X Web 内部接口读取指定用户的新帖子；
 - 使用 OpenAI 兼容模型按每条规则的 Prompt 判断是否命中；
@@ -26,7 +26,7 @@ cd apps/server
 pnpm dev
 ```
 
-服务健康检查为 `http://127.0.0.1:3000/health`。在 `apps/server` 目录构建并启动 JavaScript 产物：
+服务健康检查为 `http://127.0.0.1:5127/health`。在 `apps/server` 目录构建并启动 JavaScript 产物：
 
 ```bash
 pnpm build
@@ -40,12 +40,25 @@ pnpm build:server
 pnpm start:server
 ```
 
-如果 3000 端口已被其他程序占用，需要先关闭占用程序；扩展当前固定连接该地址。
+如果 5127 端口已被其他程序占用，需要先关闭占用程序；扩展当前固定连接该地址。
 
 可用环境变量：
 
 - `FAST_SOCIAL_DATA_DIR`：覆盖 SQLite 数据目录，建议使用绝对路径。
-- `FAST_SOCIAL_PORT`：覆盖监听端口；插件正常使用时仍需保持为 `3000`。
+- `FAST_SOCIAL_HOST`：覆盖监听地址；本地默认 `127.0.0.1`，Docker 中使用 `0.0.0.0`。
+- `FAST_SOCIAL_PORT`：覆盖监听端口；插件正常使用时仍需保持为 `5127`。
+
+## Docker
+
+从仓库根目录执行：
+
+```bash
+docker compose up --build
+```
+
+Compose 会挂载根 `.data/` 到容器 `/data`，并挂载根 `dist/` 到 `/output`。容器启动时会把服务端和插件构建结果复制到 `dist/server/` 与 `dist/extension/`；实际服务端进程仍从镜像内部运行，不会被 `dist` 挂载覆盖。
+
+如果 OpenAI 兼容服务或 Ollama 运行在宿主机，Endpoint 应使用 `http://host.docker.internal:<端口>`。
 
 ## 配置顺序
 
@@ -94,7 +107,7 @@ pnpm build
 
 常见错误：
 
-- `本地服务未启动或无法连接`：确认服务运行且端口 3000 未被占用。
+- `本地服务未启动或无法连接`：确认服务运行且端口 5127 未被占用。
 - `X Cookie 已失效` 或 `缺少 ct0`：重新复制完整 Cookie。
 - `X 用户响应结构已变化`：X operation 或响应结构发生变化，需要更新 X Adapter。
 - `AI 返回内容不是有效 JSON`：换用指令遵循更稳定的模型，或收紧监控 Prompt。

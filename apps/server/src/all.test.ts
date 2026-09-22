@@ -1,4 +1,5 @@
 import "./app.test.ts";
+import "./runtime-config.test.ts";
 import "./adapters/x/x-parser.test.ts";
 import "./adapters/x/x-client.test.ts";
 import "./ai/ai-matcher.test.ts";

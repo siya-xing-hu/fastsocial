@@ -1,6 +1,6 @@
 import type { ApiResponse } from "@fast-social/contracts";
 
-const BASE_URL = "http://127.0.0.1:3000";
+const BASE_URL = "http://127.0.0.1:5127";
 
 export class LocalServiceError extends Error {
   readonly code: string;

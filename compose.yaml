@@ -1,0 +1,17 @@
+services:
+  fast-social:
+    image: fast-social:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      FAST_SOCIAL_HOST: 0.0.0.0
+      FAST_SOCIAL_PORT: 5127
+      FAST_SOCIAL_DATA_DIR: /data
+    ports:
+      - "127.0.0.1:5127:5127"
+    volumes:
+      - ./.data:/data
+      - ./dist:/output
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
