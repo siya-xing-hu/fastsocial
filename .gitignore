@@ -5,7 +5,9 @@
 
 # Dist
 node_modules
+.pnpm-store/
 dist/
+server/data/
 
 # IDE
 .vscode/*

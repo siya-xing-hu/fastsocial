@@ -19,6 +19,7 @@ export enum RuntimeMessageTypeEnum {
   AI_STREAM_START = "ai-stream-start",
   AI_STREAM_CHUNK = "ai-stream-chunk",
   AI_STREAM_END = "ai-stream-end",
+  LOCAL_SERVICE_REQUEST = "local-service-request",
 }
 
 export type RuntimeMessage =
@@ -28,7 +29,8 @@ export type RuntimeMessage =
   | ContentScriptReadyMessage
   | AIStreamStartMessage
   | AIStreamChunkMessage
-  | AIStreamEndMessage;
+  | AIStreamEndMessage
+  | LocalServiceRequestMessage;
 
 export interface TranslateRuntimeMessage {
   type: RuntimeMessageTypeEnum.TRANSLATE;
@@ -50,8 +52,17 @@ export interface AIGenarateRuntimeMessage {
 
 export interface AIGenarateData {
   messages: Message[];
-  aiProvider: string;
+  aiProvider?: string;
   stream?: boolean; // 是否使用流式输出
+}
+
+export interface LocalServiceRequestMessage {
+  type: RuntimeMessageTypeEnum.LOCAL_SERVICE_REQUEST;
+  data: {
+    path: string;
+    method?: "GET" | "POST" | "PUT" | "DELETE";
+    body?: unknown;
+  };
 }
 
 export interface AIStreamStartMessage {

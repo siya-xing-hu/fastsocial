@@ -37,22 +37,7 @@ export enum IconEnum {
 
 // API 密钥接口
 export interface ApiKeys {
-  aiServices: Record<string, string>; // serviceId -> apiKey
   deepl: string;
-}
-
-// AI服务配置接口
-export interface AIServiceConfig {
-  id: string;
-  name: string;
-  endpoint: string;
-  customModels: Array<{
-    name: string;
-    thinking?: {
-      type: "enabled" | "disabled" | "auto";
-    };
-  }>;
-  enabled: boolean;
 }
 
 export interface PromptConfig {
@@ -63,114 +48,35 @@ export interface PromptConfig {
   enabled: boolean;
 }
 
-interface Config {
+export interface Config {
   basic: {
-    aiProvider: string; // 改为字符串，存储服务ID
     translateProvider: TranslateChannelEnum;
     targetLang: string;
     autoTranslate: boolean;
   };
-  aiServices: AIServiceConfig[];
   translationService: {
     translatePrompt: string; // 添加翻译 prompt 配置
     deeplApiEndpoint: string;
     fallbackDurationMinutes: number;
-  };
-  prompts: {
-    post: PromptConfig[];
-    reply: PromptConfig[];
   };
 }
 
 // 默认配置
 const DEFAULT_CONFIG: Config = {
   basic: {
-    aiProvider: "ollama-default:llama3", // 存储格式改为 "serviceId:modelName"
     translateProvider: TranslateChannelEnum.GOOGLE,
     targetLang: "zh-CN",
     autoTranslate: true,
   },
-  aiServices: [
-    {
-      id: "ollama-default",
-      name: "Ollama",
-      endpoint: "http://localhost:11434/v1/chat/completions",
-      customModels: [
-        {
-          name: "llama3",
-        },
-      ],
-      enabled: true,
-    },
-    {
-      id: "gemini-default",
-      name: "Gemini",
-      endpoint:
-        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-      customModels: [
-        {
-          name: "gemini-2.0-flash",
-        },
-      ],
-      enabled: true,
-    },
-    {
-      id: "openai-default",
-      name: "OpenAI",
-      endpoint: "https://api.openai.com/v1/chat/completions",
-      customModels: [
-        {
-          name: "gpt-3.5-turbo",
-        },
-        {
-          name: "gpt-4o-mini",
-        },
-      ],
-      enabled: false,
-    },
-  ],
   translationService: {
     translatePrompt: "", // 添加默认翻译 prompt
     deeplApiEndpoint: "https://api.deepl.com/v2/translate",
     fallbackDurationMinutes: 5,
   },
-  prompts: {
-    post: [
-      {
-        id: `post-${Date.now()}`,
-        name: "翻译",
-        icon: "🌎",
-        prompt: `请将文本内容
-          ''' 
-          {userContent} 
-          ''' 
-翻译成英文。翻译要求：1. 保持原文的语气和风格；2. 确保翻译的流畅性和自然度；3. 直接输出翻译结果，不要输出解析思考。`,
-        enabled: true,
-      },
-    ],
-    reply: [
-      {
-        id: `reply-${Date.now()}`,
-        name: "翻译",
-        icon: "🌎",
-        prompt: `请将文本内容
-          ''' 
-          {userContent} 
-          ''' 
-翻译成英文。翻译要求：1. 保持原文的语气和风格；2. 确保翻译的流畅性和自然度；3. 直接输出翻译结果，不要输出解析思考。`,
-        enabled: true,
-      },
-    ],
-  },
 };
 
 // 默认 API 密钥
 const DEFAULT_API_KEYS: ApiKeys = {
-  aiServices: {
-    "ollama-default": "ollama",
-    "gemini-default": "",
-    "openai-default": "",
-  },
   deepl: "",
 };
 
@@ -179,32 +85,22 @@ export const apiKeys = ref<ApiKeys>(DEFAULT_API_KEYS);
 
 function mergeStoredConfig(storedConfig: Partial<Config>): Config {
   return {
-    ...DEFAULT_CONFIG,
-    ...storedConfig,
     basic: {
-      ...DEFAULT_CONFIG.basic,
-      ...storedConfig.basic,
+      translateProvider: storedConfig.basic?.translateProvider ?? DEFAULT_CONFIG.basic.translateProvider,
+      targetLang: storedConfig.basic?.targetLang ?? DEFAULT_CONFIG.basic.targetLang,
+      autoTranslate: storedConfig.basic?.autoTranslate ?? DEFAULT_CONFIG.basic.autoTranslate,
     },
     translationService: {
-      ...DEFAULT_CONFIG.translationService,
-      ...storedConfig.translationService,
+      translatePrompt: storedConfig.translationService?.translatePrompt ?? DEFAULT_CONFIG.translationService.translatePrompt,
+      deeplApiEndpoint: storedConfig.translationService?.deeplApiEndpoint ?? DEFAULT_CONFIG.translationService.deeplApiEndpoint,
+      fallbackDurationMinutes: storedConfig.translationService?.fallbackDurationMinutes ?? DEFAULT_CONFIG.translationService.fallbackDurationMinutes,
     },
-    prompts: {
-      post: storedConfig.prompts?.post ?? DEFAULT_CONFIG.prompts.post,
-      reply: storedConfig.prompts?.reply ?? DEFAULT_CONFIG.prompts.reply,
-    },
-    aiServices: storedConfig.aiServices ?? DEFAULT_CONFIG.aiServices,
   };
 }
 
 function mergeStoredApiKeys(storedApiKeys: Partial<ApiKeys>): ApiKeys {
   return {
-    ...DEFAULT_API_KEYS,
-    ...storedApiKeys,
-    aiServices: {
-      ...DEFAULT_API_KEYS.aiServices,
-      ...storedApiKeys.aiServices,
-    },
+    deepl: storedApiKeys.deepl ?? DEFAULT_API_KEYS.deepl,
   };
 }
 
@@ -213,13 +109,30 @@ export async function initConfig() {
   const storage = await chrome.storage.local.get();
   const storedConfig = storage["fast-social-config"];
   const storedApiKeys = storage["fast-social-api-keys"];
+  const migrations: Record<string, string> = {};
 
   if (storedConfig) {
-    config.value = mergeStoredConfig(JSON.parse(storedConfig));
+    const parsed = JSON.parse(storedConfig) as Partial<Config> & {
+      aiServices?: unknown;
+      prompts?: unknown;
+      basic?: Config["basic"] & { aiProvider?: unknown };
+    };
+    config.value = mergeStoredConfig(parsed);
+    if (parsed.aiServices !== undefined || parsed.prompts !== undefined || parsed.basic?.aiProvider !== undefined) {
+      migrations["fast-social-config"] = JSON.stringify(config.value);
+    }
   }
 
   if (storedApiKeys) {
-    apiKeys.value = mergeStoredApiKeys(JSON.parse(storedApiKeys));
+    const parsed = JSON.parse(storedApiKeys) as Partial<ApiKeys> & { aiServices?: unknown };
+    apiKeys.value = mergeStoredApiKeys(parsed);
+    if (parsed.aiServices !== undefined) {
+      migrations["fast-social-api-keys"] = JSON.stringify(apiKeys.value);
+    }
+  }
+
+  if (Object.keys(migrations).length > 0) {
+    await chrome.storage.local.set(migrations);
   }
 }
 
@@ -252,20 +165,9 @@ export const saveApiKeys = debounce(async () => {
 // 为了兼容性保留原有函数名
 export const onInput = saveConfig;
 
-// 获取指定服务的 API 密钥
-export function getServiceApiKey(serviceId: string): string {
-  return apiKeys.value.aiServices[serviceId] || "";
-}
-
 // 获取 DeepL API 密钥
 export function getDeeplApiKey(): string {
   return apiKeys.value.deepl || "";
-}
-
-// 设置服务的 API 密钥
-export function setServiceApiKey(serviceId: string, key: string) {
-  apiKeys.value.aiServices[serviceId] = key;
-  saveApiKeys();
 }
 
 // 设置 DeepL API 密钥

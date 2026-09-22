@@ -22,7 +22,7 @@
         </div>
         
         <!-- AI模型选择器 - 移到标题下方 -->
-        <div class="relative">
+        <div v-if="serviceOnline" class="relative">
           <select 
             v-model="selectedAIProvider" 
             class="chat-model-selector"
@@ -36,6 +36,7 @@
             </option>
           </select>
         </div>
+        <p v-else class="text-sm text-amber-700">本地 AI 服务未启动，聊天暂不可用。</p>
       </div>
       
       <!-- 聊天消息区域 -->
@@ -108,7 +109,7 @@
             <button
               @click="sendMessage"
               class="absolute bottom-3 right-3 confirm-button rounded-full p-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-              :disabled="isLoading || !inputContent.trim()"
+              :disabled="isLoading || !inputContent.trim() || !serviceOnline"
             >
               <Send class="h-4 w-4" />
             </button>
@@ -124,12 +125,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick, onBeforeUnmount } from "vue";
-import { config } from "../../common/storage-config";
+import { ref, onMounted, watch, nextTick, onBeforeUnmount } from "vue";
 import { AIGenarateRuntimeMessage, Message, RuntimeMessageTypeEnum, sendRuntimeMessage } from "../../common/runtime-message";
 import { log_error, log_info } from "../../common/logging";
 import { X, MessageSquare, Send, User, Bot, Trash2, ChevronsDown } from "lucide-vue-next";
 import MarkdownRenderer from "./MarkdownRenderer.vue";
+import { requestLocalService } from "../../common/local-service";
 
 // Props 和 Emits
 const props = defineProps({
@@ -143,7 +144,9 @@ const props = defineProps({
 const inputContent = ref("");
 const messages = ref<Message[]>([]);
 const isLoading = ref(false);
-const selectedAIProvider = ref(config.value.basic.aiProvider);
+const selectedAIProvider = ref("");
+const serviceOnline = ref(false);
+const serviceModelOptions = ref<Array<{ value: string; label: string }>>([]);
 const messagesContainer = ref<HTMLElement | null>(null);
 const scrollContainer = ref<HTMLElement | null>(null); // 新增滚动容器的ref
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
@@ -155,22 +158,6 @@ const isScrolledToBottom = ref(true); // 是否已滚动到底部
 const CACHE_KEY_MESSAGES = "chat_dialog_messages";
 const CACHE_KEY_PROVIDER = "chat_dialog_provider";
 const MAX_MESSAGES = 100; // 最多保存100条消息（50次对话）
-
-// 计算属性：获取所有可用的服务-模型组合
-const serviceModelOptions = computed(() => {
-  const options = [];
-  for (const service of config.value.aiServices) {
-    if (service.enabled && service.customModels && service.customModels.length > 0) {
-      for (const model of service.customModels) {
-        options.push({
-          value: `${service.id}:${model.name}`,
-          label: `${service.name}: ${model.name}`
-        });
-      }
-    }
-  }
-  return options;
-});
 
 // 自动滚动到底部
 const scrollToBottom = async () => {
@@ -196,7 +183,7 @@ const handleScroll = () => {
 
 // 发送消息
 async function sendMessage() {
-  if (isLoading.value || !inputContent.value.trim()) return;
+  if (isLoading.value || !inputContent.value.trim() || !serviceOnline.value) return;
   
   // 添加用户消息
   const userMessage: Message = {
@@ -378,16 +365,24 @@ watch(selectedAIProvider, () => {
 });
 
 // 组件挂载时，恢复缓存数据
-onMounted(() => {
+onMounted(async () => {
   // 移除之前的三个监听器，改用一个统一的监听器
   chrome.runtime.onMessage.addListener(handleStreamMessage);
   
   try {
-    loadFromCache().then(() => {
-      // 加载完缓存数据后滚动到底部
-      scrollToBottom();
-    });
+    await loadFromCache();
+    const ai = await requestLocalService<{
+      options: Array<{ value: string; label: string }>;
+      defaultProvider: string;
+    }>("/api/ai/options");
+    serviceModelOptions.value = ai.options;
+    serviceOnline.value = ai.options.length > 0;
+    if (!ai.options.some((option) => option.value === selectedAIProvider.value)) {
+      selectedAIProvider.value = ai.defaultProvider || ai.options[0]?.value || "";
+    }
+    scrollToBottom();
   } catch (e) {
+    serviceOnline.value = false;
     log_error("解析缓存消息失败", e);
   }
   
@@ -444,4 +439,4 @@ onBeforeUnmount(() => {
     transform: translateY(-5px);
   }
 }
-</style> 
+</style>

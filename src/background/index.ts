@@ -5,7 +5,7 @@ import {
   RuntimeMessageResponse,
   RuntimeMessageTypeEnum,
 } from "../common/runtime-message";
-import { config, initConfig } from "../common/storage-config";
+import { initConfig } from "../common/storage-config";
 import {
   ConfigUpdateTabMessage,
   sendTabMessage,
@@ -15,6 +15,7 @@ import { execGptPrompt, execGptPromptStream } from "../utils/ai";
 import { randomString, retry } from "../utils/kit";
 import { translate } from "../utils/translate";
 import { addTabListener } from "./listener";
+import { localServiceClient } from "./local-service-client";
 
 // 跟踪已就绪的标签页
 export const readyTabs = new Set<number>();
@@ -47,6 +48,22 @@ export function init() {
       log("message", message.type);
 
       switch (message.type) {
+        case RuntimeMessageTypeEnum.LOCAL_SERVICE_REQUEST:
+          localServiceClient.request(
+            message.data.path,
+            {
+              method: message.data.method,
+              body: message.data.body,
+            },
+          ).then((data) => {
+            sendResponse({ is_ok: true, data });
+          }).catch((error) => {
+            sendResponse({
+              is_ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+          return true;
         case RuntimeMessageTypeEnum.CONTENT_SCRIPT_READY:
           if (sender.tab?.id) {
             readyTabs.add(sender.tab.id);

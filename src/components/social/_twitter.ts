@@ -17,8 +17,11 @@ import {
   PromptLocationEnum,
   createPromptContainer,
   HandlerParams,
+  resetPromptContainers,
 } from "../ui/prompt";
 import { createDialogContainer } from "../ui/dialog";
+import type { InteractionPrompt } from "@fast-social/contracts";
+import { requestLocalService } from "../../common/local-service";
 
 // 扩展 HTMLElement 接口以支持定时器属性
 interface ExtendedHTMLElement extends HTMLElement {
@@ -60,6 +63,7 @@ interface TranslateCache {
 
 // 存储翻译缓存
 const translateCache: Map<string, TranslateCache> = new Map();
+let serverPrompts: InteractionPrompt[] = [];
 
 // 创建翻译提示框
 function createTranslateTooltip(): ExtendedHTMLElement {
@@ -153,14 +157,23 @@ function hideTranslateTooltip(tooltip: ExtendedHTMLElement) {
 }
 
 export async function ttTwitterInit(url: string): Promise<void> {
+  resetPromptContainers();
+  serverPrompts = [];
+  const promptsReady = requestLocalService<InteractionPrompt[]>("/api/prompts")
+    .then((prompts) => { serverPrompts = prompts; })
+    .catch(() => {
+      // AI actions intentionally stay hidden while the local service is offline.
+    });
   switch (getXUrlEnum(url)) {
     case XUrlEnum.HOME:
       execObserver(document.body, async () => {
+        await promptsReady;
         return await ttTwitterHome();
       });
       break;
     case XUrlEnum.POST:
       execObserver(document.body, async () => {
+        await promptsReady;
         return await ttTwitterPost();
       });
       break;
@@ -205,10 +218,11 @@ async function ttTwitterHome(): Promise<boolean> {
 
   // 添加POST场景按钮
   promptList.value.push(
-    ...config.value.prompts.post
-      .filter((p) => p.enabled)
+    ...serverPrompts
+      .filter((p) => p.enabled && p.scene === "post")
       .map((p) => ({
         ...p,
+        icon: "✨",
         params: { data: { mainWrapper } },
         handler: generateHandle,
       }))
@@ -252,10 +266,11 @@ async function ttTwitterPost(): Promise<boolean> {
 
     // 从配置中获取回复按钮
     promptList.value.push(
-      ...config.value.prompts.reply
-        .filter((p) => p.enabled)
+      ...serverPrompts
+        .filter((p) => p.enabled && p.scene === "reply")
         .map((p) => ({
           ...p,
+          icon: "✨",
           params: { data: { mainWrapper, replayContent } },
           handler: generateHandle,
         }))
@@ -263,10 +278,11 @@ async function ttTwitterPost(): Promise<boolean> {
   } else {
     // 发推场景
     promptList.value.push(
-      ...config.value.prompts.post
-        .filter((p) => p.enabled)
+      ...serverPrompts
+        .filter((p) => p.enabled && p.scene === "post")
         .map((p) => ({
           ...p,
+          icon: "✨",
           params: { data: { mainWrapper } },
           handler: generateHandle,
         }))
@@ -296,7 +312,6 @@ async function generateHandle(
   const message: AIGenarateRuntimeMessage = {
     type: RuntimeMessageTypeEnum.AI_GENARATE,
     data: {
-      aiProvider: config.value.basic.aiProvider,
       messages: [
         {
           role: "user",

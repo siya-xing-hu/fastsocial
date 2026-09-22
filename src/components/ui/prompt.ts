@@ -36,6 +36,7 @@ export function createPromptContainer(
   const div = document.createElement("div");
   div.style.textOverflow = "unset";
   div.setAttribute("tt-prompt-is-done", "true");
+  div.setAttribute("data-fast-social-prompt-container", "true");
 
   // 创建一个 Vue 实例, 同时确保 promptList 是一个空数组
   promptList.value = [];
@@ -98,4 +99,14 @@ export function createPromptContainer(
       targetWrapper.appendChild(div);
       break;
   }
+}
+
+export function resetPromptContainers(): void {
+  document
+    .querySelectorAll('[data-fast-social-prompt-container="true"]')
+    .forEach((element) => element.remove());
+  document
+    .querySelectorAll('[tt-prompt-is-done="true"]')
+    .forEach((element) => element.removeAttribute("tt-prompt-is-done"));
+  promptList.value = [];
 }

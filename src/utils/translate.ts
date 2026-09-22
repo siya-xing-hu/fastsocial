@@ -252,12 +252,17 @@ export async function translate(channel: TranslateChannelEnum, text: string, is_
       } else {
         prompt += "请直接输出翻译结果，不要过度解读。";
       }
-      return await execGptPrompt(config.value.basic.aiProvider, [
-        {
-          role: "user",
-          content: prompt.replace("{targetLang}", config.value.basic.targetLang).replace("{userContent}", text),
-        },
-      ]);
+      try {
+        return await execGptPrompt(undefined, [
+          {
+            role: "user",
+            content: prompt.replace("{targetLang}", config.value.basic.targetLang).replace("{userContent}", text),
+          },
+        ]);
+      } catch (error) {
+        log_error("AI translation unavailable; falling back to local translation providers", error);
+        return automaticTranslate(text, locale);
+      }
     default:
       throw new Error(`Unsupported translation provider: ${channel}`);
   }

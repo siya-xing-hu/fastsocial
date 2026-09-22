@@ -22,27 +22,6 @@
       <div class="mt-3 rounded-xl bg-gray-100">
         <div class="flex items-center h-11 pl-4">
           <label class="inline-block text-label mb-0 text-gray-6"
-            >AI服务:</label
-          >
-          <select
-            v-model="config.basic.aiProvider"
-            @change="onInput()"
-            class="pl-3"
-          >
-            <option
-              v-for="service in serviceModelOptions"
-              :key="service.value"
-              :value="service.value"
-            >
-              {{ service.label }}
-            </option>
-          </select>
-        </div>
-      </div>
-
-      <div class="mt-3 rounded-xl bg-gray-100">
-        <div class="flex items-center h-11 pl-4">
-          <label class="inline-block text-label mb-0 text-gray-6"
             >翻译服务:</label
           >
           <select
@@ -101,28 +80,12 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, computed } from "vue";
+import { onMounted } from "vue";
 import { config, initConfig, onInput } from "../../common/storage-config";
 
 function openOptions() {
   chrome.runtime.openOptionsPage();
 }
-
-// 计算所有可用的服务-模型组合
-const serviceModelOptions = computed(() => {
-  const options = [];
-  for (const service of config.value.aiServices) {
-    if (service.enabled && service.customModels && service.customModels.length > 0) {
-      for (const model of service.customModels) {
-        options.push({
-          value: `${service.id}:${model.name}`,
-          label: `${service.name}:${model.name}`
-        });
-      }
-    }
-  }
-  return options;
-});
 
 onMounted(async () => {
   await initConfig();
