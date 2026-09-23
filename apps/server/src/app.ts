@@ -5,7 +5,8 @@ import type { SocialAdapter } from "./adapters/social-adapter.ts";
 import { XAdapter } from "./adapters/x/x-adapter.ts";
 import { XClient, type FetchLike } from "./adapters/x/x-client.ts";
 import { AIGateway } from "./ai/ai-gateway.ts";
-import { AIMatcher } from "./ai/ai-matcher.ts";
+import { BatchMatcher } from "./ai/batch-matcher.ts";
+import { AccountRepository } from "./repositories/account-repository.ts";
 import { OpenAICompatibleClient } from "./ai/openai-compatible-client.ts";
 import { openDatabase } from "./db/database.ts";
 import { ValidationError } from "./http/validation.ts";
@@ -43,8 +44,9 @@ export function createApp(options: AppOptions = {}) {
     new OpenAICompatibleClient(fetchImpl),
   );
   const telegram = new TelegramNotifier(settingsRepository, fetchImpl);
-  const matcher = new AIMatcher(ai);
-  const runner = new MonitorRunner({ monitors: monitorRepository, social, matcher, telegram });
+  const matcher = new BatchMatcher(ai);
+  const accounts = new AccountRepository(database);
+  const runner = new MonitorRunner({ monitors: monitorRepository, social, matcher, telegram, accounts });
   const scheduler = new MonitorScheduler(monitorRepository, runner);
 
   app.setErrorHandler((error, _request, reply) => {
@@ -66,7 +68,7 @@ export function createApp(options: AppOptions = {}) {
   }));
 
   registerSettingsRoutes(app, settingsRepository);
-  registerMonitorRoutes(app, monitorRepository, runner);
+  registerMonitorRoutes(app, monitorRepository, runner, accounts);
   registerAIRoutes(app, ai, settingsRepository);
   registerTestRoutes(app, { social, ai, telegram });
 

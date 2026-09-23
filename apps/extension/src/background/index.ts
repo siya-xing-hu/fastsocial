@@ -27,6 +27,18 @@ export function init() {
   const now = new Date();
   log("### init ###", now.toISOString());
 
+  chrome.commands.onCommand.addListener((command) => {
+    if (command !== "open-options") {
+      return;
+    }
+
+    chrome.runtime.openOptionsPage(() => {
+      if (chrome.runtime.lastError) {
+        log_error("打开 Fast Social 设置失败", chrome.runtime.lastError.message);
+      }
+    });
+  });
+
   // 监听标签页关闭事件
   chrome.tabs.onRemoved.addListener((tabId) => {
     readyTabs.delete(tabId);

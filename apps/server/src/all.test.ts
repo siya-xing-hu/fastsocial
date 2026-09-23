@@ -10,3 +10,5 @@ import "./repositories/monitor-repository.test.ts";
 import "./repositories/settings-repository.test.ts";
 import "./routes/routes.test.ts";
 import "./telegram/telegram-notifier.test.ts";
+
+import "./ai/batch-matcher.test.ts";

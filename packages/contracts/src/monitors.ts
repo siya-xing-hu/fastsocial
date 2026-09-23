@@ -1,3 +1,4 @@
+import type { AccountMemory, MonitorBatchStatus, PostDecision } from './account-memory.ts';
 import type { AIMatchResult } from "./ai.ts";
 import type { SocialPlatform, SocialPost } from "./social.ts";
 
@@ -14,6 +15,7 @@ export interface Monitor {
   lastError: string | null;
   createdAt: string;
   updatedAt: string;
+  batchStatus?: MonitorBatchStatus | null;
 }
 
 export interface CreateMonitorInput {
@@ -30,4 +32,9 @@ export type UpdateMonitorInput = Partial<CreateMonitorInput>;
 export interface MonitorTestResult {
   post: SocialPost;
   evaluation: AIMatchResult;
+  posts: SocialPost[];
+  decisions: PostDecision[];
+  memory: AccountMemory;
+  profileVersion: number;
+  cached: boolean;
 }

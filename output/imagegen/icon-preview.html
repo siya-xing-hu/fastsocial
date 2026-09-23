@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fast Social · 图标预览</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: #f3f4f6; color: #0d1d35; font: 15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  main { max-width: 900px; margin: 64px auto; padding: 0 24px; }
+  h1 { margin: 0; font-size: 32px; letter-spacing: -1px; }
+  p { color: #667085; margin: 6px 0 28px; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .card { border: 1px solid #e3e6eb; border-radius: 24px; background: white; padding: 28px; }
+  .hero { min-height: 340px; display: grid; place-items: center; }
+  .hero img { width: 256px; max-width: 100%; height: auto; }
+  .dark { background: #141b29; color: #e8edf5; border-color: #263348; }
+  .sizes { display: flex; align-items: flex-end; justify-content: space-around; gap: 20px; margin-top: 20px; flex-wrap: wrap; }
+  figure { margin: 0; display: grid; justify-items: center; gap: 16px; }
+  figcaption { color: #667085; font-size: 12px; }
+  .header { margin-top: 20px; display: flex; align-items: center; gap: 12px; border-radius: 16px; padding: 22px 28px; }
+  .header strong { display: block; font-size: 16px; }
+  .header small { color: #667085; }
+  @media(max-width:600px) { main { margin: 28px auto; } .cards { grid-template-columns: 1fr; } .hero { min-height: 280px; } }
+</style>
+<main>
+  <h1>Fast Social</h1>
+  <p>对话气泡 × 闪电 · 新图标预览</p>
+  <div class="cards">
+    <div class="card hero"><img src="fast-social-icon-preview.png" alt="新图标在浅色背景下的效果"></div>
+    <div class="card hero dark"><img src="fast-social-icon-preview.png" alt="新图标在深色背景下的效果"></div>
+  </div>
+  <div class="card sizes" aria-label="实际像素尺寸预览">
+    <figure><img src="../../apps/extension/src/assets/icons/icon-16.png" width="16" height="16" alt="16 像素图标"><figcaption>16 px</figcaption></figure>
+    <figure><img src="../../apps/extension/src/assets/icons/icon-32.png" width="32" height="32" alt="32 像素图标"><figcaption>32 px</figcaption></figure>
+    <figure><img src="../../apps/extension/src/assets/icons/icon-48.png" width="48" height="48" alt="48 像素图标"><figcaption>48 px</figcaption></figure>
+    <figure><img src="../../apps/extension/src/assets/icons/icon-128.png" width="128" height="128" alt="128 像素图标"><figcaption>128 px</figcaption></figure>
+  </div>
+  <div class="card header">
+    <img src="../../apps/extension/src/assets/icons/icon-128.png" width="40" height="40" alt="">
+    <div><strong>Fast Social 设置</strong><small>插件能力与本地监控服务</small></div>
+  </div>
+</main>
+</html>

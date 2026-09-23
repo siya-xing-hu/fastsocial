@@ -8,5 +8,7 @@ export interface SocialPost {
   createdAt: string;
   url: string;
   quotedText?: string;
+  replyToId?: string;
+  quotedPostId?: string;
   type: "post" | "reply" | "repost";
 }

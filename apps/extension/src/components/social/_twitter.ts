@@ -6,14 +6,12 @@ import {
 } from "../../common/runtime-message";
 import {
   config,
-  TranslateChannelEnum,
   PromptConfig,
 } from "../../common/storage-config";
 import { setInputText } from "../../utils/kit";
-import { execObserver } from "../../utils/mutationObserver";
 import { translateContent } from "../translate/text-translator";
 import {
-  promptList,
+  PromptData,
   PromptLocationEnum,
   createPromptContainer,
   HandlerParams,
@@ -28,31 +26,6 @@ interface ExtendedHTMLElement extends HTMLElement {
   _hideTimer?: NodeJS.Timeout | null;
 }
 
-enum XUrlEnum {
-  HOME = "/home",
-  POST = "/compose/post",
-  MESSAGES = "^/messages/[^/]+$", // 动态路径使用正则表达式
-  OTHER = "/other",
-}
-
-function getXUrlEnum(url: string): XUrlEnum {
-  const urlPath = new URL(url).pathname; // 提取 URL 路径
-  // 获取所有枚举值
-  const values = Object.values(XUrlEnum);
-  // 检查 urlPath 是否以某个枚举值结尾
-  for (const value of values) {
-    if (value.startsWith("^")) { // 如果枚举值是正则表达式
-      const regex = new RegExp(value);
-      if (regex.test(urlPath)) {
-        return value as XUrlEnum;
-      }
-    } else if (urlPath.endsWith(value)) { // 静态路径匹配
-      return value as XUrlEnum;
-    }
-  }
-  return XUrlEnum.OTHER;
-}
-
 // 定义翻译缓存接口
 interface TranslateCache {
   id: string;
@@ -64,9 +37,30 @@ interface TranslateCache {
 // 存储翻译缓存
 const translateCache: Map<string, TranslateCache> = new Map();
 let serverPrompts: InteractionPrompt[] = [];
+let twitterGeneration = 0;
+let stopPromptObserver: (() => void) | null = null;
+let stopTranslateObserver: (() => void) | null = null;
+let translateTooltip: ExtendedHTMLElement | null = null;
+let areTranslateTooltipListenersInstalled = false;
+
+interface TranslationBinding {
+  tweetId: string;
+  mouseEnterHandler: (event: Event) => void;
+  mouseLeaveHandler: () => void;
+  mouseMoveHandler: (event: Event) => void;
+}
+
+const translationBindings = new Map<HTMLElement, TranslationBinding>();
+
+interface AIOptionsResponse {
+  options: Array<{ value: string; label: string }>;
+  defaultProvider: string;
+}
 
 // 创建翻译提示框
 function createTranslateTooltip(): ExtendedHTMLElement {
+  if (translateTooltip?.isConnected) return translateTooltip;
+
   const tooltip = document.createElement("div") as ExtendedHTMLElement;
   tooltip.className = "translate-tooltip fixed z-50";
   tooltip.style.cssText = `
@@ -88,30 +82,23 @@ function createTranslateTooltip(): ExtendedHTMLElement {
     </div>
   `;
 
-  // 添加页面可见性变化监听
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      hideTranslateTooltip(tooltip as ExtendedHTMLElement);
-    }
-  });
-
-  // 添加页面卸载监听
-  window.addEventListener('beforeunload', () => {
-    hideTranslateTooltip(tooltip as ExtendedHTMLElement);
-  });
-
-  // 添加页面焦点变化监听
-  window.addEventListener('blur', () => {
-    hideTranslateTooltip(tooltip as ExtendedHTMLElement);
-  });
-
-  // 添加全局点击事件监听，点击其他地方时隐藏提示框
-  document.addEventListener('click', (e) => {
-    if (!tooltip.contains(e.target as Node)) {
-      hideTranslateTooltip(tooltip as ExtendedHTMLElement);
-    }
-  });
-
+  translateTooltip = tooltip;
+  if (!areTranslateTooltipListenersInstalled) {
+    const hideCurrentTooltip = () => {
+      if (translateTooltip) hideTranslateTooltip(translateTooltip);
+    };
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) hideCurrentTooltip();
+    });
+    window.addEventListener("beforeunload", hideCurrentTooltip);
+    window.addEventListener("blur", hideCurrentTooltip);
+    document.addEventListener("click", (event) => {
+      if (translateTooltip && !translateTooltip.contains(event.target as Node)) {
+        hideCurrentTooltip();
+      }
+    });
+    areTranslateTooltipListenersInstalled = true;
+  }
   return tooltip;
 }
 
@@ -157,147 +144,150 @@ function hideTranslateTooltip(tooltip: ExtendedHTMLElement) {
 }
 
 export async function ttTwitterInit(url: string): Promise<void> {
+  const generation = ++twitterGeneration;
+  stopPromptObserver?.();
+  stopPromptObserver = null;
+  stopTranslateObserver?.();
+  stopTranslateObserver = null;
   resetPromptContainers();
+  resetTwitterTranslations();
   serverPrompts = [];
-  const promptsReady = requestLocalService<InteractionPrompt[]>("/api/prompts")
-    .then((prompts) => { serverPrompts = prompts; })
-    .catch(() => {
-      // AI actions intentionally stay hidden while the local service is offline.
-    });
-  switch (getXUrlEnum(url)) {
-    case XUrlEnum.HOME:
-      execObserver(document.body, async () => {
-        await promptsReady;
-        return await ttTwitterHome();
-      });
-      break;
-    case XUrlEnum.POST:
-      execObserver(document.body, async () => {
-        await promptsReady;
-        return await ttTwitterPost();
-      });
-      break;
-    default:
-      break;
-  }
 
   if (config.value.basic.autoTranslate) {
-    execObserver(document.body, async () => {
-      if (config.value.basic.autoTranslate) {
-        await ttTwitterTranslate();
-        return false;
-      }
-      return false;
+    ttTwitterTranslate(generation);
+    stopTranslateObserver = observeXDom(generation, () => {
+      cleanupDisconnectedTranslations();
+      if (config.value.basic.autoTranslate) ttTwitterTranslate(generation);
     });
   }
+
+  try {
+    const [prompts, ai] = await Promise.all([
+      requestLocalService<InteractionPrompt[]>("/api/prompts"),
+      requestLocalService<AIOptionsResponse>("/api/ai/options"),
+    ]);
+    if (generation !== twitterGeneration) return;
+
+    const hasDefaultProvider = ai.defaultProvider !== ""
+      && ai.options.some((option) => option.value === ai.defaultProvider);
+    if (!hasDefaultProvider) return;
+    serverPrompts = prompts;
+  } catch {
+    // AI actions stay hidden while the service or its default AI is unavailable.
+    return;
+  }
+
+  if (generation !== twitterGeneration) return;
+  mountPromptComposers(url, generation);
+  stopPromptObserver = observeXDom(generation, () => {
+    mountPromptComposers(window.location.href, generation);
+  });
 }
 
-async function ttTwitterHome(): Promise<boolean> {
-  const mainWrapper = document.querySelector(
-    "main[role=main] div[data-testid=primaryColumn]",
-  );
-  const tweetTextareaWrapper = mainWrapper?.querySelector(
-    "div[data-testid=tweetTextarea_0]",
-  ) as HTMLElement;
-  const toolBarParentWrapper = mainWrapper?.querySelector(
-    "div[data-testid=toolBar]",
-  );
+function observeXDom(
+  generation: number,
+  callback: () => void,
+  debounceMs = 150,
+): () => void {
+  let timeoutId: number | undefined;
+  const observer = new MutationObserver(() => {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    timeoutId = window.setTimeout(() => {
+      timeoutId = undefined;
+      if (generation === twitterGeneration) callback();
+    }, debounceMs);
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
 
-  if (!toolBarParentWrapper || !tweetTextareaWrapper) {
-    return false;
-  }
-
-  if (toolBarParentWrapper.getAttribute("tt-prompt-is-done") === "true") {
-    return true;
-  }
-
-  createPromptContainer(
-    toolBarParentWrapper as HTMLElement,
-    PromptLocationEnum.Previous,
-  );
-
-  // 添加POST场景按钮
-  promptList.value.push(
-    ...serverPrompts
-      .filter((p) => p.enabled && p.scene === "post")
-      .map((p) => ({
-        ...p,
-        icon: "✨",
-        params: { data: { mainWrapper } },
-        handler: generateHandle,
-      }))
-  );
-
-  return true;
+  return () => {
+    observer.disconnect();
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+  };
 }
 
-async function ttTwitterPost(): Promise<boolean> {
-  const mainWrapper = document.querySelector("div[role=dialog]");
-  const tweetTextareaWrapper = mainWrapper?.querySelector(
-    "div[data-testid=tweetTextarea_0]",
-  ) as HTMLElement | null;
-  const toolBarParentWrapper = mainWrapper?.querySelector(
-    "div[data-testid=toolBar]",
-  );
-
-  if (!toolBarParentWrapper || !tweetTextareaWrapper) {
-    return false;
-  }
-
-  if (toolBarParentWrapper.getAttribute("tt-prompt-is-done") === "true") {
-    return true;
-  }
-
-  createPromptContainer(
-    toolBarParentWrapper as HTMLElement,
-    PromptLocationEnum.Previous,
-  );
-
-  const replayTweetTextWrapper = mainWrapper?.querySelector(
-    "div[data-testid=tweetText",
-  ) as HTMLElement;
-
-  if (replayTweetTextWrapper) {
-    // 回复场景
-    const replayContent = replayTweetTextWrapper.textContent || "";
-    if (replayContent === "") {
-      return false;
+function findComposerRoot(toolbar: HTMLElement): HTMLElement | null {
+  let current = toolbar.parentElement;
+  while (current && current !== document.body) {
+    if (current.querySelector<HTMLElement>('div[data-testid="tweetTextarea_0"]')) {
+      return current;
     }
-
-    // 从配置中获取回复按钮
-    promptList.value.push(
-      ...serverPrompts
-        .filter((p) => p.enabled && p.scene === "reply")
-        .map((p) => ({
-          ...p,
-          icon: "✨",
-          params: { data: { mainWrapper, replayContent } },
-          handler: generateHandle,
-        }))
-    );
-  } else {
-    // 发推场景
-    promptList.value.push(
-      ...serverPrompts
-        .filter((p) => p.enabled && p.scene === "post")
-        .map((p) => ({
-          ...p,
-          icon: "✨",
-          params: { data: { mainWrapper } },
-          handler: generateHandle,
-        }))
-    );
+    current = current.parentElement;
   }
+  return null;
+}
 
-  return true;
+function isStatusUrl(url: string): boolean {
+  try {
+    return /^\/[^/]+\/status\/\d+/.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+function getComposerScene(
+  toolbar: HTMLElement,
+  mainWrapper: HTMLElement,
+  url: string,
+): InteractionPrompt["scene"] {
+  const dialog = toolbar.closest<HTMLElement>('div[role="dialog"]');
+  const actionButton = mainWrapper.querySelector<HTMLElement>(
+    '[data-testid="tweetButton"], [data-testid="tweetButtonInline"]',
+  );
+  const actionLabel = `${actionButton?.getAttribute("aria-label") ?? ""} ${
+    actionButton?.textContent ?? ""
+  }`.toLowerCase();
+
+  if (/\breply\b|回复|回覆/.test(actionLabel)) return "reply";
+  if (/\bpost\b|发布|發佈|发帖|發帖/.test(actionLabel)) return "post";
+  if (dialog?.querySelector('[data-testid="tweetText"]')) return "reply";
+  if (!dialog && isStatusUrl(url)) return "reply";
+  return "post";
+}
+
+function getReplyContent(toolbar: HTMLElement, mainWrapper: HTMLElement): string {
+  const boundary = toolbar.closest<HTMLElement>('div[role="dialog"]')
+    ?? toolbar.closest<HTMLElement>("main")
+    ?? mainWrapper;
+  const candidates = [...boundary.querySelectorAll<HTMLElement>('[data-testid="tweetText"]')];
+  if (candidates.length === 0) return "";
+
+  const precedingCandidates = candidates.filter((candidate) =>
+    Boolean(candidate.compareDocumentPosition(toolbar) & Node.DOCUMENT_POSITION_FOLLOWING)
+  );
+  const closestPreceding = precedingCandidates[precedingCandidates.length - 1];
+  return (closestPreceding ?? candidates[0]).textContent?.trim() ?? "";
+}
+
+function mountPromptComposers(url: string, generation: number): void {
+  if (generation !== twitterGeneration || serverPrompts.length === 0) return;
+
+  const toolbars = document.querySelectorAll<HTMLElement>('div[data-testid="toolBar"]');
+  for (const toolbar of toolbars) {
+    if (generation !== twitterGeneration) return;
+    const mainWrapper = findComposerRoot(toolbar);
+    if (!mainWrapper) continue;
+
+    const scene = getComposerScene(toolbar, mainWrapper, url);
+    const prompts = serverPrompts.filter((prompt) => prompt.enabled && prompt.scene === scene);
+    if (prompts.length === 0) continue;
+
+    const replayContent = scene === "reply" ? getReplyContent(toolbar, mainWrapper) : "";
+    const promptData: PromptData[] = prompts.map((prompt) => ({
+      ...prompt,
+      icon: "✨",
+      params: { data: { mainWrapper, replayContent, generation } },
+      handler: generateHandle,
+    }));
+    createPromptContainer(toolbar, PromptLocationEnum.Previous, promptData);
+  }
 }
 
 async function generateHandle(
   prompt: PromptConfig,
   params: HandlerParams,
 ): Promise<void> {
-  const { mainWrapper, replayContent } = params.data;
-  if (!mainWrapper) {
+  const { mainWrapper, replayContent, generation } = params.data;
+  if (!mainWrapper || generation !== twitterGeneration || !mainWrapper.isConnected) {
     return;
   }
 
@@ -322,6 +312,7 @@ async function generateHandle(
   };
 
   const response = await sendRuntimeMessage(message);
+  if (generation !== twitterGeneration || !mainWrapper.isConnected) return;
   if (!response.is_ok) {
     log_error("AI generate failed", response.error);
     return;
@@ -336,122 +327,108 @@ async function generateHandle(
   );
 }
 
-async function ttTwitterTranslate(): Promise<void> {
-  const mainWrapper = document.querySelector(
-    "main[role=main] div[data-testid=primaryColumn]",
-  );
-  const ariaLabelWrapper = mainWrapper?.querySelector(
-    "section[role=region] div[aria-label]",
-  ) as HTMLElement | null;
-  if (!ariaLabelWrapper) {
-    return;
+function cleanupTranslationBinding(tweetWrapper: HTMLElement): void {
+  const binding = translationBindings.get(tweetWrapper);
+  if (!binding) return;
+
+  tweetWrapper.removeEventListener("mouseenter", binding.mouseEnterHandler);
+  tweetWrapper.removeEventListener("mouseleave", binding.mouseLeaveHandler);
+  tweetWrapper.removeEventListener("mousemove", binding.mouseMoveHandler);
+  tweetWrapper.removeAttribute("data-has-translator");
+  translateCache.delete(binding.tweetId);
+  translationBindings.delete(tweetWrapper);
+}
+
+function cleanupDisconnectedTranslations(): void {
+  for (const tweetWrapper of translationBindings.keys()) {
+    if (!tweetWrapper.isConnected) cleanupTranslationBinding(tweetWrapper);
   }
+}
 
-  let tweetWrapperList = [
-    ...ariaLabelWrapper.querySelectorAll(
-      `div[aria-label] article[role=article]:not([tabindex="-1"]) div[lang]:not([data-has-translator=true]):not([lang^=zh])`,
-    ),
-  ];
+function resetTwitterTranslations(): void {
+  for (const tweetWrapper of [...translationBindings.keys()]) {
+    cleanupTranslationBinding(tweetWrapper);
+  }
+  document
+    .querySelectorAll('[data-has-translator="true"]')
+    .forEach((element) => element.removeAttribute("data-has-translator"));
+  translateCache.clear();
+  if (translateTooltip) hideTranslateTooltip(translateTooltip);
+}
 
-  if (!tweetWrapperList.length) return;
+function ttTwitterTranslate(generation: number): void {
+  if (generation !== twitterGeneration) return;
 
-  // 创建翻译提示框
+  const tweetWrapperList = document.querySelectorAll<HTMLElement>(
+    'main[role="main"] article[role="article"] div[lang]:not([data-has-translator="true"]):not([lang^="zh"])',
+  );
+  if (tweetWrapperList.length === 0) return;
+
   const tooltip = createTranslateTooltip();
+  for (const tweetWrapper of tweetWrapperList) {
+    if (generation !== twitterGeneration) return;
+    if (translationBindings.has(tweetWrapper)) continue;
 
-  tweetWrapperList.forEach((tweetWrapper) => {
+    const textContents = [...tweetWrapper.children]
+      .filter((child) => child.tagName === "SPAN")
+      .map((span) => span.textContent?.trim() ?? "")
+      .filter(Boolean);
+    if (textContents.length === 0) continue;
+
+    const originalText = textContents.join(" ");
+    const tweetId = tweetWrapper.getAttribute("id")
+      || `fast-social-${Math.random().toString(36).slice(2, 11)}`;
+
+    const mouseEnterHandler = (event: Event) => {
+      const cache = translateCache.get(tweetId);
+      if (!cache) return;
+      const mouseEvent = event as MouseEvent;
+      showTranslateTooltip(
+        tooltip,
+        cache.translatedText,
+        mouseEvent.clientX + 10,
+        mouseEvent.clientY + 10,
+      );
+    };
+    const mouseLeaveHandler = () => hideTranslateTooltip(tooltip);
+    const mouseMoveHandler = (event: Event) => {
+      const cache = translateCache.get(tweetId);
+      if (!cache || tooltip.style.display !== "block") return;
+      const mouseEvent = event as MouseEvent;
+      showTranslateTooltip(
+        tooltip,
+        cache.translatedText,
+        mouseEvent.clientX + 10,
+        mouseEvent.clientY + 10,
+      );
+    };
+
     tweetWrapper.setAttribute("data-has-translator", "true");
-    const tweetId = tweetWrapper.getAttribute("id") ||
-      Math.random().toString(36).substr(2, 9);
-
-    // 获取所有文本内容
-    const textElements = [...tweetWrapper.children].filter(
-      (child) => child.tagName === "SPAN",
-    );
-    const textContents: string[] = [];
-
-    textElements.forEach((span) => {
-      const textContent = span.textContent;
-      if (textContent) {
-        textContents.push(textContent);
-      }
+    tweetWrapper.addEventListener("mouseenter", mouseEnterHandler);
+    tweetWrapper.addEventListener("mouseleave", mouseLeaveHandler);
+    tweetWrapper.addEventListener("mousemove", mouseMoveHandler);
+    translationBindings.set(tweetWrapper, {
+      tweetId,
+      mouseEnterHandler,
+      mouseLeaveHandler,
+      mouseMoveHandler,
     });
 
-    if (textContents.length > 0) {
-      const originalText = textContents.join(" ");
-
-      // 检查缓存
-      if (!translateCache.has(tweetId)) {
-        // 翻译并缓存
-        translateContent(config.value.basic.translateProvider, originalText, false).then(
-          (translatedText) => {
-            if (translatedText) {
-              translateCache.set(tweetId, {
-                id: tweetId,
-                originalText,
-                translatedText,
-                element: tweetWrapper as HTMLElement,
-              });
-            }
-          },
-        );
-      }
-
-      // 添加鼠标悬停事件
-      const mouseEnterHandler = (e: Event) => {
-        const mouseEvent = e as MouseEvent;
-        const cache = translateCache.get(tweetId);
-        if (cache) {
-          showTranslateTooltip(
-            tooltip as ExtendedHTMLElement,
-            cache.translatedText,
-            mouseEvent.clientX + 10,
-            mouseEvent.clientY + 10,
-          );
-        }
-      };
-
-      const mouseLeaveHandler = () => {
-        hideTranslateTooltip(tooltip as ExtendedHTMLElement);
-      };
-
-      const mouseMoveHandler = (e: Event) => {
-        const mouseEvent = e as MouseEvent;
-        if (tooltip.style.display === "block") {
-          const cache = translateCache.get(tweetId);
-          if (cache) {
-            showTranslateTooltip(
-              tooltip as ExtendedHTMLElement,
-              cache.translatedText,
-              mouseEvent.clientX + 10,
-              mouseEvent.clientY + 10,
-            );
-          }
-        }
-      };
-
-      tweetWrapper.addEventListener("mouseenter", mouseEnterHandler);
-      tweetWrapper.addEventListener("mouseleave", mouseLeaveHandler);
-      tweetWrapper.addEventListener("mousemove", mouseMoveHandler);
-
-      // 添加元素移除监听，清理事件监听器
-      const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-          mutation.removedNodes.forEach((node) => {
-            if (node === tweetWrapper || (node as Element).contains?.(tweetWrapper)) {
-              hideTranslateTooltip(tooltip as ExtendedHTMLElement);
-              tweetWrapper.removeEventListener("mouseenter", mouseEnterHandler);
-              tweetWrapper.removeEventListener("mouseleave", mouseLeaveHandler);
-              tweetWrapper.removeEventListener("mousemove", mouseMoveHandler);
-              observer.disconnect();
-            }
-          });
+    void translateContent(config.value.basic.translateProvider, originalText, false)
+      .then((translatedText) => {
+        if (
+          generation !== twitterGeneration
+          || !translatedText
+          || !tweetWrapper.isConnected
+          || !translationBindings.has(tweetWrapper)
+        ) return;
+        translateCache.set(tweetId, {
+          id: tweetId,
+          originalText,
+          translatedText,
+          element: tweetWrapper,
         });
-      });
-
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true,
-      });
-    }
-  });
+      })
+      .catch((error) => log_error("Translate tweet failed", error));
+  }
 }

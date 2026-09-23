@@ -10,7 +10,7 @@
     "dev": "vite",
     "build-dev": "vue-tsc && vite build --mode development",
     "build": "vue-tsc && vite build",
-    "test": "node --experimental-strip-types --test src/background/local-service-client.test.ts"
+    "test": "node --experimental-strip-types --test src/background/local-service-client.test.ts src/pages/option/option-navigation.test.ts"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "2.0.0-beta.26",

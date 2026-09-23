@@ -4,6 +4,7 @@ import type {
   InteractionPrompt,
   ServerSettingsPatch,
   UpdateMonitorInput,
+  XCookieInput,
 } from "@fast-social/contracts";
 
 export class ValidationError extends Error {
@@ -83,9 +84,20 @@ export function validateSettingsPatch(value: unknown): ServerSettingsPatch {
 
   if (value.x !== undefined) {
     if (!isObject(value.x)) throw new ValidationError("X 配置无效");
-    patch.x = value.x.cookie === undefined
-      ? {}
-      : { cookie: stringValue(value.x.cookie, "X Cookie") };
+    if (value.x.cookies !== undefined) {
+      if (!Array.isArray(value.x.cookies)) {
+        throw new ValidationError("X Cookie 列表无效");
+      }
+      const cookies = value.x.cookies.map(validateXCookie);
+      if (new Set(cookies.map((cookie) => cookie.id)).size !== cookies.length) {
+        throw new ValidationError("X Cookie ID 不能重复");
+      }
+      patch.x = { cookies };
+    } else {
+      patch.x = value.x.cookie === undefined
+        ? {}
+        : { cookie: stringValue(value.x.cookie, "X Cookie") };
+    }
   }
 
   if (value.telegram !== undefined) {
@@ -117,6 +129,10 @@ function validateAIService(value: unknown): AIServiceConfig {
     throw new ValidationError("AI API 地址必须是有效的 HTTP(S) URL");
   }
   if (typeof value.enabled !== "boolean") throw new ValidationError("AI 服务启用状态无效");
+  const apiFormat = value.apiFormat ?? "openai";
+  if (apiFormat !== "openai" && apiFormat !== "anthropic") {
+    throw new ValidationError("AI 接口格式无效");
+  }
   const models = value.models.map((model) => {
     if (!isObject(model)) throw new ValidationError("AI 模型格式无效");
     return { name: requiredString(model.name, "AI 模型名称") };
@@ -129,11 +145,27 @@ function validateAIService(value: unknown): AIServiceConfig {
     id,
     name,
     endpoint,
+    apiFormat,
     enabled: value.enabled,
     models,
     ...(value.apiKey === undefined
       ? {}
       : { apiKey: stringValue(value.apiKey, "AI API Key") }),
+  };
+}
+
+function validateXCookie(value: unknown): XCookieInput {
+  if (!isObject(value)) throw new ValidationError("X Cookie 格式无效");
+  if (typeof value.enabled !== "boolean") {
+    throw new ValidationError("X Cookie 启用状态无效");
+  }
+  return {
+    id: requiredString(value.id, "X Cookie ID"),
+    name: requiredString(value.name, "X Cookie 名称"),
+    enabled: value.enabled,
+    ...(value.cookie === undefined
+      ? {}
+      : { cookie: stringValue(value.cookie, "X Cookie") }),
   };
 }
 

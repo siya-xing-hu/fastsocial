@@ -1,6 +1,27 @@
 import type { ApiResponse } from "@fast-social/contracts";
 
 const BASE_URL = "http://127.0.0.1:5127";
+export const DEFAULT_LOCAL_SERVICE_TIMEOUT_MS = 3_000;
+export const AI_LOCAL_SERVICE_TIMEOUT_MS = 70_000;
+export const X_TEST_LOCAL_SERVICE_TIMEOUT_MS = 40_000;
+export const MONITOR_TEST_LOCAL_SERVICE_TIMEOUT_MS = 600_000;
+export const TELEGRAM_TEST_LOCAL_SERVICE_TIMEOUT_MS = 15_000;
+
+export function resolveLocalServiceTimeout(
+  path: string,
+  requestedTimeoutMs?: number,
+): number {
+  if (requestedTimeoutMs !== undefined) return requestedTimeoutMs;
+  if (path === "/api/ai/chat" || path === "/api/test/ai") {
+    return AI_LOCAL_SERVICE_TIMEOUT_MS;
+  }
+  if (path === "/api/test/x") return X_TEST_LOCAL_SERVICE_TIMEOUT_MS;
+  if (path === "/api/test/telegram") return TELEGRAM_TEST_LOCAL_SERVICE_TIMEOUT_MS;
+  if (/^\/api\/monitors\/[^/]+\/(run|profile)$/.test(path)) {
+    return MONITOR_TEST_LOCAL_SERVICE_TIMEOUT_MS;
+  }
+  return DEFAULT_LOCAL_SERVICE_TIMEOUT_MS;
+}
 
 export class LocalServiceError extends Error {
   readonly code: string;
@@ -16,7 +37,7 @@ export class LocalServiceClient {
   private readonly fetchImpl: typeof fetch;
 
   constructor(fetchImpl: typeof fetch = fetch) {
-    this.fetchImpl = fetchImpl;
+    this.fetchImpl = fetchImpl.bind(globalThis);
   }
 
   async request<T>(
@@ -24,7 +45,10 @@ export class LocalServiceClient {
     options: { method?: string; body?: unknown; timeoutMs?: number } = {},
   ): Promise<T> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 3_000);
+    const timer = setTimeout(
+      () => controller.abort(),
+      resolveLocalServiceTimeout(path, options.timeoutMs),
+    );
     try {
       const response = await this.fetchImpl(`${BASE_URL}${path}`, {
         method: options.method ?? "GET",

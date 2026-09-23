@@ -1,6 +1,6 @@
-import { createApp, ref } from "vue";
+import { createApp } from "vue";
 import Prompt from "./Prompt.vue";
-import { PromptConfig } from '../../common/storage-config';
+import type { PromptConfig } from "../../common/storage-config";
 
 export interface HandlerParams {
   data: any;
@@ -24,13 +24,67 @@ export enum PromptLocationEnum {
   Inside = "inside",
 }
 
-export const promptList = ref<PromptData[]>([]);
+interface PromptMount {
+  app: ReturnType<typeof createApp>;
+  targetWrapper: HTMLElement;
+}
+
+const promptApps = new Map<HTMLElement, PromptMount>();
+let promptLifecycleObserver: MutationObserver | null = null;
+
+function disconnectLifecycleObserverWhenIdle(): void {
+  if (promptApps.size > 0) return;
+  promptLifecycleObserver?.disconnect();
+  promptLifecycleObserver = null;
+}
+
+function cleanupPromptMount(container: HTMLElement, removeContainer: boolean): void {
+  const mount = promptApps.get(container);
+  if (!mount) return;
+
+  // Delete first: Vue unmount removes Teleport nodes and causes more DOM mutations.
+  promptApps.delete(container);
+  mount.app.unmount();
+  if (removeContainer && container.isConnected) container.remove();
+
+  const targetStillHasMount = [...promptApps.values()].some(
+    (entry) => entry.targetWrapper === mount.targetWrapper,
+  );
+  if (!targetStillHasMount) {
+    mount.targetWrapper.removeAttribute("tt-prompt-is-done");
+  }
+
+  disconnectLifecycleObserverWhenIdle();
+}
+
+function cleanupDisconnectedPromptMounts(): void {
+  for (const [container, mount] of promptApps) {
+    if (!container.isConnected || !mount.targetWrapper.isConnected) {
+      cleanupPromptMount(container, container.isConnected);
+    }
+  }
+}
+
+function ensureLifecycleObserver(): void {
+  if (promptLifecycleObserver || !document.body) return;
+  promptLifecycleObserver = new MutationObserver(cleanupDisconnectedPromptMounts);
+  promptLifecycleObserver.observe(document.body, { childList: true, subtree: true });
+}
 
 // 创建按钮区域
 export function createPromptContainer(
   targetWrapper: HTMLElement,
   promptLocation: PromptLocationEnum,
-): void {
+  prompts: PromptData[],
+): boolean {
+  cleanupDisconnectedPromptMounts();
+  const existingMount = [...promptApps.entries()].find(
+    ([container, mount]) => mount.targetWrapper === targetWrapper && container.isConnected,
+  );
+  if (existingMount) return false;
+
+  // A marker can outlive its container for one MutationObserver tick. Treat it as stale.
+  targetWrapper.removeAttribute("tt-prompt-is-done");
   targetWrapper.setAttribute("tt-prompt-is-done", "true");
 
   const div = document.createElement("div");
@@ -38,13 +92,9 @@ export function createPromptContainer(
   div.setAttribute("tt-prompt-is-done", "true");
   div.setAttribute("data-fast-social-prompt-container", "true");
 
-  // 创建一个 Vue 实例, 同时确保 promptList 是一个空数组
-  promptList.value = [];
   const app = createApp(Prompt, {
-    promptList: promptList.value  // 将 promptList 通过 props 传递给组件
+    promptList: prompts,
   });
-  
-  app.mount(div);
 
   switch (promptLocation) {
     case PromptLocationEnum.Previous:
@@ -99,14 +149,30 @@ export function createPromptContainer(
       targetWrapper.appendChild(div);
       break;
   }
+
+  try {
+    app.mount(div);
+    promptApps.set(div, { app, targetWrapper });
+    ensureLifecycleObserver();
+    return true;
+  } catch (error) {
+    targetWrapper.removeAttribute("tt-prompt-is-done");
+    div.remove();
+    throw error;
+  }
 }
 
 export function resetPromptContainers(): void {
+  promptLifecycleObserver?.disconnect();
+  promptLifecycleObserver = null;
+
+  for (const element of [...promptApps.keys()]) {
+    cleanupPromptMount(element, true);
+  }
   document
     .querySelectorAll('[data-fast-social-prompt-container="true"]')
     .forEach((element) => element.remove());
   document
     .querySelectorAll('[tt-prompt-is-done="true"]')
     .forEach((element) => element.removeAttribute("tt-prompt-is-done"));
-  promptList.value = [];
 }

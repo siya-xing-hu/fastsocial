@@ -1,8 +1,30 @@
 import type { AIServiceConfig, InteractionPrompt } from "./ai.ts";
 
-export interface XSettings {
+export type XCookieStatus = "unchecked" | "valid" | "invalid";
+
+/** A redacted X Cookie entry returned by the settings API. */
+export interface XCookieConfig {
+  id: string;
+  name: string;
+  enabled: boolean;
+  cookieConfigured: boolean;
+  status: XCookieStatus;
+  lastCheckedAt?: string;
+  lastError?: string;
+}
+
+/** An X Cookie entry accepted by the settings API. */
+export interface XCookieInput {
+  id: string;
+  name: string;
+  enabled: boolean;
+  /** Omit this field to preserve the previously stored Cookie for the same id. */
   cookie?: string;
-  cookieConfigured?: boolean;
+}
+
+export interface XSettings {
+  cookies: XCookieConfig[];
+  cookieConfigured: boolean;
 }
 
 export interface TelegramSettings {
@@ -26,6 +48,10 @@ export interface ServerSettings {
 export interface ServerSettingsPatch {
   ai?: AISettings;
   interactionPrompts?: InteractionPrompt[];
-  x?: { cookie?: string };
+  x?: {
+    cookies?: XCookieInput[];
+    /** Legacy single-Cookie input kept for compatibility during migration. */
+    cookie?: string;
+  };
   telegram?: { botToken?: string; chatId?: string };
 }

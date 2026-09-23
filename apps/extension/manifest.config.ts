@@ -30,10 +30,10 @@ export default defineManifest(async () => {
     description: "A Twitter Copilot Chrome Extension",
     version: version,
     icons: {
-      "16": "src/assets/main_logo_enable.png",
-      "32": "src/assets/main_logo_enable.png",
-      "48": "src/assets/main_logo_enable.png",
-      "128": "src/assets/main_logo_enable.png",
+      "16": "src/assets/icons/icon-16.png",
+      "32": "src/assets/icons/icon-32.png",
+      "48": "src/assets/icons/icon-48.png",
+      "128": "src/assets/icons/icon-128.png",
     },
     host_permissions: hostPermissions,
     permissions: [
@@ -46,6 +46,14 @@ export default defineManifest(async () => {
     action: {
       // default_title: "Click to show Fast Social Config",
       default_popup: "src/pages/popup/popup.html",
+    },
+    commands: {
+      "open-options": {
+        suggested_key: {
+          default: "Alt+Shift+F",
+        },
+        description: "打开 Fast Social 设置",
+      },
     },
     options_page: "src/pages/option/option.html",
     content_scripts: [

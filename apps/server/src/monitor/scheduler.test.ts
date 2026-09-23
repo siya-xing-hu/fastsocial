@@ -11,7 +11,7 @@ test("scheduler runs only due enabled monitors", async () => {
   const due = repository.create({ name: "due", username: "a", prompt: "p", intervalMinutes: 1 });
   repository.create({ name: "off", username: "b", prompt: "p", intervalMinutes: 1, enabled: false });
   const calls: string[] = [];
-  const runner = { async run(id: string) { calls.push(id); } } as MonitorRunner;
+  const runner = { async runMany(ids: string[]) { calls.push(...ids); } } as MonitorRunner;
   await new MonitorScheduler(repository, runner).tick();
   assert.deepEqual(calls, [due.id]);
   database.close();
@@ -24,7 +24,7 @@ test("scheduler does not overlap the same monitor", async () => {
   let release!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
   let calls = 0;
-  const runner = { async run() { calls += 1; await gate; } } as unknown as MonitorRunner;
+  const runner = { async runMany() { calls += 1; await gate; } } as unknown as MonitorRunner;
   const scheduler = new MonitorScheduler(repository, runner);
   const first = scheduler.tick();
   await Promise.resolve();

@@ -1,4 +1,9 @@
-import { config, TranslateChannelEnum, getDeeplApiKey } from "../common/storage-config";
+import {
+  config,
+  DEFAULT_TRANSLATE_PROMPT,
+  TranslateChannelEnum,
+  getDeeplApiKey,
+} from "../common/storage-config";
 import { log_error, log_info } from "../common/logging";
 import { NonRetryableError, stringifyQueryParameter } from "./kit";
 import { execGptPrompt } from "./ai";
@@ -220,18 +225,36 @@ async function automaticTranslate(
   try {
     return await googleTranslate(text, locale);
   } catch (error) {
-    if (!(error instanceof GoogleTranslateUnavailableError)) {
+    if (!getDeeplApiKey()) {
+      if (error instanceof GoogleTranslateUnavailableError) {
+        throw new NonRetryableError(
+          "Google Translate is unavailable and automatic fallback requires a DeepL API key. Configure the key in Translation Settings.",
+        );
+      }
       throw error;
     }
 
-    await enableDeeplFallback();
-    if (!getDeeplApiKey()) {
-      throw new NonRetryableError(
-        "Google Translate is rate-limited and automatic fallback requires a DeepL API key. Configure the key in Translation Settings.",
-      );
+    const translated = await deeplTranslate(text, locale);
+    if (error instanceof GoogleTranslateUnavailableError) {
+      await enableDeeplFallback();
     }
-    return deeplTranslate(text, locale);
+    return translated;
   }
+}
+
+export function buildTranslationPrompt(
+  template: string,
+  text: string,
+  targetLang: string,
+  isAdvanced: boolean,
+): string {
+  const instructions = isAdvanced
+    ? "讲解不常用词汇和特殊用法，以供用户理解。"
+    : "请直接输出翻译结果，不要过度解读。";
+
+  return `${template.trim()}\n\n${instructions}`
+    .replace(/\{targetLang\}/g, () => targetLang)
+    .replace(/\{userContent\}/g, () => text);
 }
 
 export async function translate(channel: TranslateChannelEnum, text: string, is_advanced: boolean, locale: string): Promise<string> {
@@ -243,20 +266,17 @@ export async function translate(channel: TranslateChannelEnum, text: string, is_
     case TranslateChannelEnum.DEEPL:
       return deeplTranslate(text, locale);
     case TranslateChannelEnum.AI:
-      let prompt = config.value.translationService.translatePrompt;
-      if (!prompt) {
-        prompt = "请将文本内容\n'''{userContent} \n'''翻译成{targetLang}。翻译要求：1. 保持专业术语的准确性，对于专业术语可以选择不翻译；2. 保持原文的语气和风格；3. 确保翻译的流畅性和自然度。";
-      }
-      if (is_advanced) {
-        prompt += "讲解不常用词汇和特殊用法，以供用户理解。";
-      } else {
-        prompt += "请直接输出翻译结果，不要过度解读。";
-      }
+      const prompt = buildTranslationPrompt(
+        config.value.translationService.translatePrompt || DEFAULT_TRANSLATE_PROMPT,
+        text,
+        config.value.basic.targetLang,
+        is_advanced,
+      );
       try {
         return await execGptPrompt(undefined, [
           {
             role: "user",
-            content: prompt.replace("{targetLang}", config.value.basic.targetLang).replace("{userContent}", text),
+            content: prompt,
           },
         ]);
       } catch (error) {

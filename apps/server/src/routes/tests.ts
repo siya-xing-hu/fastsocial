@@ -16,7 +16,11 @@ export function registerTestRoutes(
     const body = asObject(request.body);
     const username = typeof body?.username === "string" ? body.username.trim() : "";
     if (!username) throw new ValidationError("请填写 X 用户名");
-    const posts = await dependencies.social.fetchRecentPosts(username);
+    const cookieId = typeof body?.cookieId === "string" ? body.cookieId.trim() : "";
+    const posts = await dependencies.social.fetchRecentPosts(
+      username,
+      cookieId || undefined,
+    );
     return { ok: true, data: { username: username.replace(/^@/, ""), posts: posts.slice(0, 3) } };
   });
 

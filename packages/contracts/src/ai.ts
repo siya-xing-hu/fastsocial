@@ -9,6 +9,7 @@ export interface AIServiceConfig {
   id: string;
   name: string;
   endpoint: string;
+  apiFormat?: "openai" | "anthropic";
   apiKey?: string;
   apiKeyConfigured?: boolean;
   models: AIModelConfig[];

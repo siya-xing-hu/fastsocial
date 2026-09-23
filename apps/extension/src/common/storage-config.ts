@@ -61,15 +61,26 @@ export interface Config {
   };
 }
 
+export const DEFAULT_TRANSLATE_PROMPT = `你是一名熟悉中英文互联网语境的翻译助手。请将下面的社交媒体内容翻译为 {targetLang}。
+
+要求：
+1. 忠实保留原意、语气、段落、标点与 emoji。
+2. 人名、账号、产品名、链接、代码、缩写和业内常用术语可保留原文。
+3. 表达自然，符合目标语言在社交媒体中的习惯，不要逐字硬译。
+4. 不要补充原文没有的信息。
+
+待翻译内容：
+{userContent}`;
+
 // 默认配置
 const DEFAULT_CONFIG: Config = {
   basic: {
-    translateProvider: TranslateChannelEnum.GOOGLE,
+    translateProvider: TranslateChannelEnum.AUTO,
     targetLang: "zh-CN",
     autoTranslate: true,
   },
   translationService: {
-    translatePrompt: "", // 添加默认翻译 prompt
+    translatePrompt: DEFAULT_TRANSLATE_PROMPT,
     deeplApiEndpoint: "https://api.deepl.com/v2/translate",
     fallbackDurationMinutes: 5,
   },
@@ -84,6 +95,7 @@ export const config = ref<Config>(DEFAULT_CONFIG);
 export const apiKeys = ref<ApiKeys>(DEFAULT_API_KEYS);
 
 function mergeStoredConfig(storedConfig: Partial<Config>): Config {
+  const storedTranslatePrompt = storedConfig.translationService?.translatePrompt;
   return {
     basic: {
       translateProvider: storedConfig.basic?.translateProvider ?? DEFAULT_CONFIG.basic.translateProvider,
@@ -91,7 +103,10 @@ function mergeStoredConfig(storedConfig: Partial<Config>): Config {
       autoTranslate: storedConfig.basic?.autoTranslate ?? DEFAULT_CONFIG.basic.autoTranslate,
     },
     translationService: {
-      translatePrompt: storedConfig.translationService?.translatePrompt ?? DEFAULT_CONFIG.translationService.translatePrompt,
+      translatePrompt:
+        typeof storedTranslatePrompt === "string" && storedTranslatePrompt.trim()
+          ? storedTranslatePrompt
+          : DEFAULT_TRANSLATE_PROMPT,
       deeplApiEndpoint: storedConfig.translationService?.deeplApiEndpoint ?? DEFAULT_CONFIG.translationService.deeplApiEndpoint,
       fallbackDurationMinutes: storedConfig.translationService?.fallbackDurationMinutes ?? DEFAULT_CONFIG.translationService.fallbackDurationMinutes,
     },
@@ -118,9 +133,19 @@ export async function initConfig() {
       basic?: Config["basic"] & { aiProvider?: unknown };
     };
     config.value = mergeStoredConfig(parsed);
-    if (parsed.aiServices !== undefined || parsed.prompts !== undefined || parsed.basic?.aiProvider !== undefined) {
+    const storedTranslatePrompt = parsed.translationService?.translatePrompt;
+    if (
+      parsed.aiServices !== undefined ||
+      parsed.prompts !== undefined ||
+      parsed.basic?.aiProvider !== undefined ||
+      typeof storedTranslatePrompt !== "string" ||
+      !storedTranslatePrompt.trim()
+    ) {
       migrations["fast-social-config"] = JSON.stringify(config.value);
     }
+  } else {
+    config.value = mergeStoredConfig({});
+    migrations["fast-social-config"] = JSON.stringify(config.value);
   }
 
   if (storedApiKeys) {

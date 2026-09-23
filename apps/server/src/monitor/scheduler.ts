@@ -30,17 +30,18 @@ export class MonitorScheduler {
       if (!monitor.lastCheckedAt) return true;
       return now - Date.parse(monitor.lastCheckedAt) >= monitor.intervalMinutes * 60_000;
     });
-    await Promise.all(due.map((monitor) => this.runOne(monitor.id)));
+    const groups = new Map<string, string[]>();
+    for (const monitor of due) {
+      const key = monitor.username.toLowerCase();
+      groups.set(key, [...(groups.get(key) ?? []), monitor.id]);
+    }
+    await Promise.all([...groups.values()].map(ids => this.runGroup(ids)));
   }
 
-  private async runOne(id: string): Promise<void> {
-    this.running.add(id);
-    try {
-      await this.runner.run(id);
-    } catch {
-      // The runner stores the actionable error on the monitor itself.
-    } finally {
-      this.running.delete(id);
-    }
+  private async runGroup(ids: string[]): Promise<void> {
+    for (const id of ids) this.running.add(id);
+    try { await this.runner.runMany(ids); }
+    catch { /* The runner stores the actionable error. */ }
+    finally { for (const id of ids) this.running.delete(id); }
   }
 }

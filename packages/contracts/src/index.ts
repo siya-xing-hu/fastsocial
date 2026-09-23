@@ -4,3 +4,4 @@ export * from "./health.ts";
 export * from "./monitors.ts";
 export * from "./settings.ts";
 export * from "./social.ts";
+export * from './account-memory.ts';

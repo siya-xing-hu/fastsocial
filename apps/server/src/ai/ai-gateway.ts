@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { AIChatMessage, AIModelConfig, AIServiceConfig } from "@fast-social/contracts";
 import type { SettingsRepository } from "../repositories/settings-repository.ts";
 import { OpenAICompatibleClient } from "./openai-compatible-client.ts";
@@ -11,9 +12,14 @@ export class AIGateway {
     this.client = client;
   }
 
-  complete(provider: string | undefined, messages: AIChatMessage[]): Promise<string> {
+  complete(provider: string | undefined, messages: AIChatMessage[], maxOutputTokens?: number): Promise<string> {
     const resolved = this.resolve(provider);
-    return this.client.complete({ ...resolved, messages });
+    return this.client.complete({ ...resolved, messages, maxOutputTokens, ...(maxOutputTokens ? { timeoutMs: 180_000 } : {}) });
+  }
+
+  fingerprint(): string {
+    const resolved = this.resolve();
+    return createHash('sha256').update(JSON.stringify(resolved)).digest('hex');
   }
 
   stream(
@@ -28,7 +34,7 @@ export class AIGateway {
   options(): Array<{ value: string; label: string }> {
     const ai = this.settings.getAI();
     return ai.services.flatMap((service) =>
-      service.enabled
+      service.enabled && Boolean(service.apiKey)
         ? service.models.map((model) => ({
             value: `${service.id}:${model.name}`,
             label: `${service.name} / ${model.name}`,
