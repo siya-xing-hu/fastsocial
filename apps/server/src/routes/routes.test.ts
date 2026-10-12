@@ -1,9 +1,10 @@
+import { XRequestQueue } from '../adapters/x/request-queue.ts';
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createApp } from "../app.ts";
 
 test("monitor CRUD validates and persists rules", async () => {
-  const app = createApp();
+  const app = createApp({ xRequestQueue: new XRequestQueue({ intervalMs: 0 }) });
   const invalid = await app.inject({
     method: "POST",
     url: "/api/monitors",
@@ -43,7 +44,7 @@ test("monitor CRUD validates and persists rules", async () => {
 });
 
 test("settings API redacts secrets", async () => {
-  const app = createApp();
+  const app = createApp({ xRequestQueue: new XRequestQueue({ intervalMs: 0 }) });
   const saved = await app.inject({
     method: "PUT",
     url: "/api/settings",
@@ -72,7 +73,7 @@ test("settings API redacts secrets", async () => {
 });
 
 test("settings API rejects invalid secret types", async () => {
-  const app = createApp();
+  const app = createApp({ xRequestQueue: new XRequestQueue({ intervalMs: 0 }) });
   const response = await app.inject({
     method: "PUT",
     url: "/api/settings",
@@ -85,7 +86,7 @@ test("settings API rejects invalid secret types", async () => {
 
 test("X test route forwards the selected Cookie id", async () => {
   let received: { username: string; cookieId?: string } | undefined;
-  const app = createApp({
+  const app = createApp({ xRequestQueue: new XRequestQueue({ intervalMs: 0 }),
     socialAdapter: {
       async fetchRecentPosts(username, cookieId) {
         received = { username, cookieId };
@@ -114,7 +115,7 @@ test("X test route forwards the selected Cookie id", async () => {
 });
 
 test("AI options only expose enabled models with a configured key", async () => {
-  const app = createApp();
+  const app = createApp({ xRequestQueue: new XRequestQueue({ intervalMs: 0 }) });
   const saved = await app.inject({
     method: "PUT",
     url: "/api/settings",
@@ -142,7 +143,7 @@ test("AI options only expose enabled models with a configured key", async () => 
 });
 
 test("settings API validates and preserves the AI interface format", async () => {
-  const app = createApp();
+  const app = createApp({ xRequestQueue: new XRequestQueue({ intervalMs: 0 }) });
   const saved = await app.inject({
     method: "PUT",
     url: "/api/settings",
@@ -186,7 +187,7 @@ test("settings API validates and preserves the AI interface format", async () =>
 });
 
 test("prompts API preserves configured priority and omits disabled prompts", async () => {
-  const app = createApp();
+  const app = createApp({ xRequestQueue: new XRequestQueue({ intervalMs: 0 }) });
   const prompts = [
     {
       id: "second",

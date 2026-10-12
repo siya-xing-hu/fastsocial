@@ -32,17 +32,29 @@
         <p class="text-xs font-semibold text-slate-600">{{ result.content.label }}</p>
         <pre class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-slate-200 bg-slate-950 px-4 py-3 text-xs leading-6 text-slate-100">{{ result.content.value }}</pre>
       </div>
+      <div v-if="result.posts?.length" class="space-y-3">
+        <p class="text-xs font-semibold text-slate-600">首页 Post</p>
+        <article v-for="post in result.posts" :key="post.id" class="rounded-xl border border-slate-200 bg-white p-4">
+          <div class="flex items-start justify-between gap-3 text-xs">
+            <strong class="text-slate-700">@{{ post.author }}</strong>
+            <a :href="post.url" target="_blank" rel="noopener noreferrer" class="shrink-0 text-blue-600 hover:underline">查看原帖 ↗</a>
+          </div>
+          <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">{{ post.text }}</p>
+          <blockquote v-if="post.quotedText" class="mt-3 whitespace-pre-wrap break-words border-l-2 border-slate-200 pl-3 text-xs leading-5 text-slate-500">{{ post.quotedText }}</blockquote>
+        </article>
+      </div>
     </div>
 
     <template #footer>
       <div class="flex justify-end">
-        <button type="button" class="secondary-button" @click="$emit('close')">关闭</button>
+        <ActionButton action="close" label="关闭测试结果" @click="$emit('close')" />
       </div>
     </template>
   </OptionDialog>
 </template>
 
 <script setup lang="ts">
+import ActionButton from "../../../components/ui/ActionButton.vue";
 import { CircleCheckBig, CircleX } from "lucide-vue-next";
 import type { TestResultState } from "../use-server-admin";
 import OptionDialog from "./OptionDialog.vue";
@@ -50,7 +62,3 @@ import OptionDialog from "./OptionDialog.vue";
 defineProps<{ result: TestResultState | null }>();
 defineEmits<{ close: [] }>();
 </script>
-
-<style scoped>
-.secondary-button { @apply inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50; }
-</style>

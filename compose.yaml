@@ -8,6 +8,10 @@ services:
       FAST_SOCIAL_HOST: 0.0.0.0
       FAST_SOCIAL_PORT: 5127
       FAST_SOCIAL_DATA_DIR: /data
+      FAST_SOCIAL_TRACE: ${FAST_SOCIAL_TRACE:-1}
+      NODE_USE_ENV_PROXY: "1"
+      HTTPS_PROXY: ${FAST_SOCIAL_HTTPS_PROXY:-}
+      NO_PROXY: ${FAST_SOCIAL_NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal}
     ports:
       - "127.0.0.1:5127:5127"
     volumes:

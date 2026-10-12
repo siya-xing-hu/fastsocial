@@ -1,4 +1,4 @@
-import { rm, mkdir } from "node:fs/promises";
+import { rm, mkdir, cp } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -8,6 +8,7 @@ const outputDirectory = resolve(serverRoot, "../../dist/server");
 
 await rm(outputDirectory, { recursive: true, force: true });
 await mkdir(outputDirectory, { recursive: true });
+await cp(resolve(serverRoot, "src/assistant/skills"), resolve(outputDirectory, "skills"), { recursive: true });
 
 await build({
   absWorkingDir: serverRoot,

@@ -21,6 +21,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         popup: resolve(extensionRoot, "src/pages/popup/popup.html"),
+        assistant: resolve(extensionRoot, "src/pages/assistant/assistant.html"),
       },
     },
   },

@@ -180,7 +180,12 @@ function validateInteractionPrompt(value: unknown): InteractionPrompt {
     prompt: requiredString(value.prompt, "Prompt 内容"),
     scene,
     enabled: value.enabled,
+    ...(value.accountIds === undefined ? {} : { accountIds: validateAccountIds(value.accountIds) }),
   };
+}
+function validateAccountIds(value: unknown): string[] {
+  if (!Array.isArray(value) || value.some(v => typeof v !== 'string' || !v)) throw new ValidationError('账号关联无效');
+  return [...new Set(value)] as string[];
 }
 
 function requiredString(value: unknown, label: string): string {

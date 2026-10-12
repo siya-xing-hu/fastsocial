@@ -1,5 +1,6 @@
 import { ref } from "vue";
 import { debounce } from "../utils/kit";
+import { createConfigPersistence } from "./config-persistence";
 import {
   ConfigUpdateRuntimeMessage,
   RuntimeMessageTypeEnum,
@@ -55,13 +56,15 @@ export interface Config {
     autoTranslate: boolean;
   };
   translationService: {
-    translatePrompt: string; // 添加翻译 prompt 配置
+    translatePrompt: string; // Cached template content, usable without fetching settings.
+    promptId?: string;
+    promptName?: string;
     deeplApiEndpoint: string;
     fallbackDurationMinutes: number;
   };
 }
 
-export const DEFAULT_TRANSLATE_PROMPT = `你是一名熟悉中英文互联网语境的翻译助手。请将下面的社交媒体内容翻译为 {targetLang}。
+export const DEFAULT_TRANSLATE_PROMPT = `你是一名熟悉中英文互联网语境的翻译助手。请将下面的社交媒体内容翻译为 {{_tl_}}。
 
 要求：
 1. 忠实保留原意、语气、段落、标点与 emoji。
@@ -70,7 +73,7 @@ export const DEFAULT_TRANSLATE_PROMPT = `你是一名熟悉中英文互联网语
 4. 不要补充原文没有的信息。
 
 待翻译内容：
-{userContent}`;
+{input}`;
 
 // 默认配置
 const DEFAULT_CONFIG: Config = {
@@ -103,9 +106,11 @@ function mergeStoredConfig(storedConfig: Partial<Config>): Config {
       autoTranslate: storedConfig.basic?.autoTranslate ?? DEFAULT_CONFIG.basic.autoTranslate,
     },
     translationService: {
+      promptId: storedConfig.translationService?.promptId ?? "",
+      promptName: storedConfig.translationService?.promptName ?? "",
       translatePrompt:
         typeof storedTranslatePrompt === "string" && storedTranslatePrompt.trim()
-          ? storedTranslatePrompt
+          ? storedTranslatePrompt.replace(/\{userContent\}/g, '{input}').replace(/\{replyContent\}/g, '{reply}').replace(/\{targetLang\}/g, '{{_tl_}}')
           : DEFAULT_TRANSLATE_PROMPT,
       deeplApiEndpoint: storedConfig.translationService?.deeplApiEndpoint ?? DEFAULT_CONFIG.translationService.deeplApiEndpoint,
       fallbackDurationMinutes: storedConfig.translationService?.fallbackDurationMinutes ?? DEFAULT_CONFIG.translationService.fallbackDurationMinutes,
@@ -161,31 +166,24 @@ export async function initConfig() {
   }
 }
 
-// 保存配置
-export const saveConfig = debounce(async () => {
-  await chrome.storage.local.set({
-    ["fast-social-config"]: JSON.stringify(config.value),
-  });
+const persistence = createConfigPersistence({
+  read: () => ({ config: config.value, apiKeys: apiKeys.value }),
+  write: values => chrome.storage.local.set(values),
+  apply: settings => {
+    config.value = settings.config;
+    apiKeys.value = settings.apiKeys;
+  },
+  notify: async () => {
+    const message: ConfigUpdateRuntimeMessage = { type: RuntimeMessageTypeEnum.CONFIG_UPDATE };
+    const response = await sendRuntimeMessage(message);
+    if (!response?.is_ok) throw new Error("配置更新通知失败");
+  },
+});
 
-  const message: ConfigUpdateRuntimeMessage = {
-    type: RuntimeMessageTypeEnum.CONFIG_UPDATE,
-  };
-
-  await sendRuntimeMessage(message);
-}, 400);
-
-// 保存 API 密钥
-export const saveApiKeys = debounce(async () => {
-  await chrome.storage.local.set({
-    ["fast-social-api-keys"]: JSON.stringify(apiKeys.value),
-  });
-
-  const message: ConfigUpdateRuntimeMessage = {
-    type: RuntimeMessageTypeEnum.CONFIG_UPDATE,
-  };
-
-  await sendRuntimeMessage(message);
-}, 400);
+// Read state when each queued write executes, so a delayed form save cannot overwrite an import.
+export const saveConfig = debounce(() => { void persistence.saveConfig(); }, 400);
+export const saveApiKeys = debounce(() => { void persistence.saveApiKeys(); }, 400);
+export const importConfigJson = persistence.importJson;
 
 // 为了兼容性保留原有函数名
 export const onInput = saveConfig;

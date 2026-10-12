@@ -1,9 +1,13 @@
 import type { ApiResponse } from "@fast-social/contracts";
+import { INCOMPATIBLE_SERVICE_MESSAGE, LocalServiceError } from "../common/local-service-error.ts";
+import { validateLocalServiceResponse } from "../common/local-service-contract.ts";
+export { LocalServiceError } from "../common/local-service-error.ts";
 
 const BASE_URL = "http://127.0.0.1:5127";
 export const DEFAULT_LOCAL_SERVICE_TIMEOUT_MS = 3_000;
 export const AI_LOCAL_SERVICE_TIMEOUT_MS = 70_000;
-export const X_TEST_LOCAL_SERVICE_TIMEOUT_MS = 40_000;
+// X reads and mutations share a 30-second server queue, including other accounts.
+export const X_TEST_LOCAL_SERVICE_TIMEOUT_MS = 600_000;
 export const MONITOR_TEST_LOCAL_SERVICE_TIMEOUT_MS = 600_000;
 export const TELEGRAM_TEST_LOCAL_SERVICE_TIMEOUT_MS = 15_000;
 
@@ -12,25 +16,19 @@ export function resolveLocalServiceTimeout(
   requestedTimeoutMs?: number,
 ): number {
   if (requestedTimeoutMs !== undefined) return requestedTimeoutMs;
+  if (path === "/api/assistant/chat" || path === "/api/assistant/posting-policy") return X_TEST_LOCAL_SERVICE_TIMEOUT_MS;
   if (path === "/api/ai/chat" || path === "/api/test/ai") {
     return AI_LOCAL_SERVICE_TIMEOUT_MS;
   }
   if (path === "/api/test/x") return X_TEST_LOCAL_SERVICE_TIMEOUT_MS;
+  if (/^\/api\/accounts\/[^/]+\/test$/.test(path)) return X_TEST_LOCAL_SERVICE_TIMEOUT_MS;
+  if (/^\/api\/accounts\/[^/]+\/following(?:\/|$)/.test(path)) return X_TEST_LOCAL_SERVICE_TIMEOUT_MS;
   if (path === "/api/test/telegram") return TELEGRAM_TEST_LOCAL_SERVICE_TIMEOUT_MS;
+  if (/^\/api\/workflows\/[^/]+\/(preview|profile(?:\/refresh)?)$/.test(path)) return MONITOR_TEST_LOCAL_SERVICE_TIMEOUT_MS;
   if (/^\/api\/monitors\/[^/]+\/(run|profile)$/.test(path)) {
     return MONITOR_TEST_LOCAL_SERVICE_TIMEOUT_MS;
   }
   return DEFAULT_LOCAL_SERVICE_TIMEOUT_MS;
-}
-
-export class LocalServiceError extends Error {
-  readonly code: string;
-
-  constructor(message: string, code = "LOCAL_SERVICE_ERROR") {
-    super(message);
-    this.name = "LocalServiceError";
-    this.code = code;
-  }
 }
 
 export class LocalServiceClient {
@@ -67,15 +65,17 @@ export class LocalServiceClient {
       }
       const envelope = payload as ApiResponse<T>;
       if (!response.ok || ("ok" in payload && envelope.ok === false)) {
+        if (response.status === 404 && (/^\/api\/(account-config|accounts|workflows)(?:\?|$)/.test(path) || path.startsWith('/api/assistant/'))) {
+          throw new LocalServiceError(INCOMPATIBLE_SERVICE_MESSAGE, "LOCAL_SERVICE_INCOMPATIBLE");
+        }
         throw new LocalServiceError(
           envelope.ok === false ? envelope.error.message : `本地服务请求失败（${response.status}）`,
-          envelope.ok === false ? envelope.error.code : "LOCAL_SERVICE_ERROR",
+          envelope.ok === false ? envelope.error.code : `HTTP_${response.status}`,
         );
       }
-      if ("data" in payload) {
-        return (payload as { data: T }).data;
-      }
-      return payload as T;
+      const data = "data" in payload ? (payload as { data: T }).data : payload as T;
+      validateLocalServiceResponse(path, data);
+      return data;
     } catch (error) {
       if (error instanceof LocalServiceError) throw error;
       throw new LocalServiceError(

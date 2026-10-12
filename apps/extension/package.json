@@ -10,7 +10,7 @@
     "dev": "vite",
     "build-dev": "vue-tsc && vite build --mode development",
     "build": "vue-tsc && vite build",
-    "test": "node --experimental-strip-types --test src/background/local-service-client.test.ts src/pages/option/option-navigation.test.ts"
+    "test": "node --experimental-strip-types --test src/background/local-service-client.test.ts src/pages/option/option-navigation.test.ts src/pages/option/interaction-prompt-order.test.ts src/pages/option/workflow-run-message.test.ts src/common/config-transfer.test.ts src/common/config-persistence.test.ts src/common/account-policy.test.ts src/common/confirmation-gate.test.ts src/assistant/context-guard.test.ts src/assistant/conversations.test.ts src/assistant/skill-commands.test.ts src/assistant/open-panel.test.ts src/assistant/x-context.test.ts"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "2.0.0-beta.26",
@@ -20,6 +20,7 @@
     "@types/uuid": "^9.0.7",
     "@vitejs/plugin-vue": "^4.6.2",
     "autoprefixer": "^10.4.16",
+    "happy-dom": "^20.14.6",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.4.0",
     "typescript": "5.4.5",

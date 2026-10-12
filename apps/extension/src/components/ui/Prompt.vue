@@ -1,7 +1,7 @@
 <template>
   <div class="fast-social-prompt-bar">
     <div class="prompt-choices" role="group" aria-label="AI 互动场景">
-      <button
+      <button data-ui="choice"
         v-for="prompt in visiblePrompts"
         :key="prompt.id"
         type="button"
@@ -14,29 +14,10 @@
         <span>{{ prompt.name }}</span>
       </button>
 
-      <button
-        v-if="hasMorePrompts"
-        type="button"
-        class="more-button"
-        :class="{ 'more-button-active': selectedPromptIsOverflow }"
-        aria-label="显示全部互动场景"
-        title="更多场景"
-        @click="pickerOpen = true"
-      >
-        <MoreHorizontal aria-hidden="true" />
-      </button>
+      <ActionButton action="more" label="显示全部互动场景" v-if="hasMorePrompts" @click="pickerOpen = true" />
     </div>
 
-    <button
-      type="button"
-      class="generate-button"
-      :disabled="isLoading || !selectedPrompt"
-      @click="handleGenerate"
-    >
-      <LoaderCircle v-if="isLoading" class="animate-spin" aria-hidden="true" />
-      <Sparkles v-else aria-hidden="true" />
-      <span>{{ isLoading ? "生成中" : "生成" }}</span>
-    </button>
+    <ActionButton action="run" label="生成文案" :disabled="isLoading || !selectedPrompt" @click="handleGenerate" :loading="isLoading" />
   </div>
 
   <Teleport to="body">
@@ -70,13 +51,11 @@
                   <DialogTitle class="prompt-picker-title">选择互动场景</DialogTitle>
                   <p class="prompt-picker-description">选中后返回 X，再点击生成即可使用。</p>
                 </div>
-                <button type="button" class="prompt-picker-close" aria-label="关闭" @click="pickerOpen = false">
-                  <X aria-hidden="true" />
-                </button>
+                <ActionButton action="close" label="关闭场景选择" @click="pickerOpen = false" />
               </div>
 
               <div class="prompt-picker-list">
-                <button
+                <button data-ui="choice" :title="prompt.name"
                   v-for="prompt in activePrompts"
                   :key="prompt.id"
                   type="button"
@@ -97,6 +76,7 @@
 </template>
 
 <script lang="ts" setup>
+import ActionButton from "./ActionButton.vue";
 import {
   Dialog,
   DialogPanel,
@@ -104,9 +84,10 @@ import {
   TransitionChild,
   TransitionRoot,
 } from "@headlessui/vue";
-import { Check, LoaderCircle, MoreHorizontal, Sparkles, X } from "lucide-vue-next";
+import { Check } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 import type { PromptData } from "./prompt";
+import { confirmOperation } from './confirm-operation';
 
 const QUICK_PROMPT_LIMIT = 3;
 
@@ -149,6 +130,7 @@ function selectFromPicker(promptId: string): void {
 
 async function handleGenerate(): Promise<void> {
   if (isLoading.value || !selectedPrompt.value) return;
+  if (!await confirmOperation({title: '确认 AI 生成', message: '将使用所选指令和相关内容调用 AI 生成文案。是否继续？'})) return;
   isLoading.value = true;
   try {
     await selectedPrompt.value.handler(selectedPrompt.value, selectedPrompt.value.params);

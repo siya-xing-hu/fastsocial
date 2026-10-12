@@ -5,9 +5,7 @@
         <h2 id="ai-services-title" class="text-2xl font-semibold tracking-tight text-slate-900">AI 服务</h2>
         <p class="mt-1.5 max-w-2xl text-sm leading-6 text-slate-600">集中维护 API 地址、模型和 Key；监听与插件 AI 能力统一使用这里的配置。</p>
       </div>
-      <button type="button" class="primary-button" :disabled="!settings || busyAction !== null" @click="openDialog()">
-        <Plus class="h-4 w-4" />添加 AI 服务
-      </button>
+      <ActionButton action="add" label="添加 AI 服务" :disabled="!settings || busyAction !== null" @click="openDialog()" />
     </header>
 
     <div class="mt-5 flex gap-2 rounded-xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-xs leading-5 text-blue-800">
@@ -52,12 +50,9 @@
               </div>
             </div>
             <div class="flex items-center gap-2 md:justify-end">
-              <label class="mr-1 inline-flex items-center gap-2 text-xs font-medium text-slate-600">
-                <input :checked="service.enabled" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" :disabled="busyAction !== null" @change="toggleService(service, ($event.target as HTMLInputElement).checked)" />
-                启用
-              </label>
-              <button type="button" class="icon-button" :aria-label="`编辑 ${service.name}`" :disabled="busyAction !== null" @click="openDialog(service)"><Pencil class="h-4 w-4" /></button>
-              <button type="button" class="icon-button text-red-600 hover:bg-red-50" :aria-label="`删除 ${service.name}`" :disabled="busyAction !== null" @click="confirmRemove(service.id)"><Trash2 class="h-4 w-4" /></button>
+              <ToggleSwitch class="mr-1" :model-value="service.enabled" :label="`启用 AI 服务 ${service.name}`" :disabled="busyAction !== null" @update:model-value="toggleService(service, $event)" />
+              <ActionButton action="edit" :label="`编辑 ${service.name}`" :disabled="busyAction !== null" @click="openDialog(service)" />
+              <ActionButton action="delete" :label="`删除 ${service.name}`" :disabled="busyAction !== null" @click="confirmRemove(service.id)" />
             </div>
           </div>
         </article>
@@ -73,12 +68,8 @@
             </select>
           </label>
           <div class="flex gap-2">
-            <button type="button" class="secondary-button" :disabled="busyAction !== null" @click="saveAI()">
-              {{ busyAction === 'ai' ? '保存中…' : '保存默认值' }}
-            </button>
-            <button type="button" class="secondary-button" :disabled="busyAction !== null || !settings.ai.defaultProvider" @click="testAI">
-              {{ busyAction === 'test:ai' ? '测试中…' : '测试 AI' }}
-            </button>
+            <ActionButton action="save" label="保存默认模型" :disabled="busyAction !== null" @click="saveAI()" :loading="busyAction === 'ai'" />
+            <ActionButton action="test" label="测试 AI" :disabled="busyAction !== null || !settings.ai.defaultProvider" @click="testAI" :loading="busyAction === 'test:ai'" />
           </div>
         </div>
       </article>
@@ -114,12 +105,12 @@
         </label>
         <label class="block"><span class="field-label">模型列表</span><textarea v-model="draft.modelsText" class="field-input min-h-24 resize-y" placeholder="gpt-5.1&#10;gpt-5-mini" /><span class="field-help">每行一个模型，也可以使用英文逗号分隔。</span></label>
         <label class="block"><span class="field-label">API Key</span><input v-model="draft.apiKey" type="password" class="field-input" autocomplete="off" :placeholder="draft.apiKeyConfigured ? '已配置；留空表示保留' : 'sk-...'" /></label>
-        <label class="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700"><input v-model="draft.enabled" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />启用此服务</label>
+        <ToggleSwitch v-model="draft.enabled" label="启用此服务" :disabled="busyAction !== null" />
       </fieldset>
       <template #footer>
         <div class="flex justify-end gap-3">
-          <button type="button" class="secondary-button" :disabled="busyAction !== null" @click="closeDialog">取消</button>
-          <button type="button" class="primary-button" :disabled="busyAction !== null" @click="submitDraft">{{ busyAction === 'ai' ? '保存中…' : '保存服务' }}</button>
+          <ActionButton action="cancel" label="取消" :disabled="busyAction !== null" @click="closeDialog" />
+          <ActionButton action="save" label="保存 AI 服务" :disabled="busyAction !== null" @click="submitDraft" :loading="busyAction === 'ai'" />
         </div>
       </template>
     </OptionDialog>
@@ -127,10 +118,13 @@
 </template>
 
 <script setup lang="ts">
+import ActionButton from "../../../../components/ui/ActionButton.vue";
+import { confirmOperation } from '../../../../components/ui/confirm-operation';
 import { ref } from "vue";
 import type { AIServiceConfig } from "@fast-social/contracts";
-import { Bot, Info, Pencil, Plus, Trash2 } from "lucide-vue-next";
+import { Bot, Info } from "lucide-vue-next";
 import OptionDialog from "../OptionDialog.vue";
+import ToggleSwitch from "../../../../components/ui/ToggleSwitch.vue";
 import {
   emptyServiceDraft,
   serviceToDraft,
@@ -175,7 +169,7 @@ async function submitDraft() {
 }
 
 async function confirmRemove(id: string) {
-  if (window.confirm("确定删除这个 AI 服务？")) await removeService(id);
+  if (await confirmOperation({title: '确认删除 AI 服务', message: '确定删除这个 AI 服务？'})) await removeService(id);
 }
 
 async function toggleService(service: AIServiceConfig, enabled: boolean) {
@@ -209,9 +203,6 @@ function usesLoopbackAddress(endpoint: string): boolean {
 .field-label { @apply mb-2 block text-sm font-medium text-slate-700; }
 .field-input { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100; }
 .field-help { @apply mt-2 block text-xs leading-5 text-slate-500; }
-.primary-button { @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50; }
-.secondary-button { @apply inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50; }
-.icon-button { @apply inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50; }
 .status-badge { @apply rounded-full px-2 py-0.5 text-[10px] font-semibold; }
 .error-card { @apply rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700; }
 </style>

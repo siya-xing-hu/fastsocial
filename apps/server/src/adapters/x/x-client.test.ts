@@ -1,3 +1,4 @@
+import { XRequestQueue } from './request-queue.ts';
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -41,7 +42,7 @@ test("X client keeps one randomly selected Cookie for the complete timeline requ
   });
   const requests: Array<{ url: string; headers: Headers }> = [];
   const responses = [userResponse(), timelineResponse()];
-  const client = new XClient(settings, async (input, init) => {
+  const client = new XClient(settings, new XRequestQueue({ intervalMs: 0 }), async (input, init) => {
     requests.push({ url: String(input), headers: new Headers(init?.headers) });
     return responses.shift()!;
   }, () => 0);
@@ -109,7 +110,7 @@ test("X client marks an authentication failure invalid and retries another Cooki
     userResponse(),
     timelineResponse(),
   ];
-  const client = new XClient(settings, async (_input, init) => {
+  const client = new XClient(settings, new XRequestQueue({ intervalMs: 0 }), async (_input, init) => {
     requestCookies.push(new Headers(init?.headers).get("cookie") ?? "");
     return responses.shift()!;
   }, () => 0.99);
@@ -155,7 +156,7 @@ test("X client retries an ordinary 403 once with another Cookie without invalida
     },
   });
   let requestCount = 0;
-  const client = new XClient(settings, async () => {
+  const client = new XClient(settings, new XRequestQueue({ intervalMs: 0 }), async () => {
     requestCount += 1;
     return new Response(JSON.stringify({ errors: [{ code: 200, message: "Forbidden" }] }), {
       status: 403,
@@ -177,7 +178,7 @@ test("X client allows explicitly testing an invalid Cookie", async () => {
   });
   settings.updateXCookieStatus("target", cookie, "invalid", "previous failure");
   const responses = [userResponse(), timelineResponse()];
-  const client = new XClient(settings, async () => responses.shift()!);
+  const client = new XClient(settings, new XRequestQueue({ intervalMs: 0 }), async () => responses.shift()!);
 
   await client.fetchRecentPosts("example", "target");
 
@@ -198,7 +199,7 @@ test("X client identifies a missing web operation and retries once without inval
           { id: "second", name: "Second", enabled: true, cookie: "auth_token=two; ct0=csrf" },
         ] } });
         let requestCount = 0;
-        const client = new XClient(settings, async () => {
+        const client = new XClient(settings, new XRequestQueue({ intervalMs: 0 }), async () => {
           requestCount += 1;
           if (operation === "UserTweets" && requestCount % 2 === 1) return userResponse();
           return new Response("", { status: 404 });
@@ -222,7 +223,7 @@ test("X client identifies a missing web operation and retries once without inval
 test("X client rejects missing configuration and marks a malformed Cookie invalid", async () => {
   const database = openDatabase(":memory:");
   const settings = new SettingsRepository(database);
-  const client = new XClient(settings, async () => new Response("{}"));
+  const client = new XClient(settings, new XRequestQueue({ intervalMs: 0 }), async () => new Response("{}"));
   await assert.rejects(() => client.fetchRecentPosts("example"), /配置 X Cookie/);
 
   settings.update({
@@ -251,7 +252,7 @@ test("X client reports clearly when every enabled Cookie is invalid", async () =
     x: { cookies: [{ id: "expired", name: "Expired", enabled: true, cookie }] },
   });
   settings.updateXCookieStatus("expired", cookie, "invalid", "expired");
-  const client = new XClient(settings, async () => new Response("{}"));
+  const client = new XClient(settings, new XRequestQueue({ intervalMs: 0 }), async () => new Response("{}"));
 
   await assert.rejects(
     () => client.fetchRecentPosts("example"),
@@ -266,7 +267,7 @@ test('random Cookie selection has no usage balancing and retries at most once wi
   settings.update({ x: { cookies: ['one', 'two', 'three'].map(id => ({ id, name: id, enabled: true, cookie: `auth_token=${id}; ct0=csrf` })) } });
   const used: string[] = [];
   let fail = false;
-  const client = new XClient(settings, async (_url, init) => {
+  const client = new XClient(settings, new XRequestQueue({ intervalMs: 0 }), async (_url, init) => {
     used.push(new Headers(init?.headers).get('cookie')!);
     if (fail) throw new Error('network offline');
     return userResponse();

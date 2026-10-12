@@ -1,112 +1,86 @@
 <template>
-  <div class="min-h-screen bg-slate-100 text-slate-900">
-    <header class="border-b border-slate-200 bg-white">
-      <div class="mx-auto flex min-h-[76px] max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-        <div class="flex min-w-0 items-center gap-3">
-          <img :src="brandIcon" alt="" width="40" height="40" class="h-10 w-10 shrink-0" />
-          <div class="min-w-0">
-            <h1 class="truncate text-base font-semibold tracking-tight text-slate-900">Fast Social 设置</h1>
-            <p class="mt-0.5 hidden text-xs text-slate-500 sm:block">插件能力与本地监控服务</p>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <span
-            class="inline-flex items-center gap-2 text-xs font-medium"
-            :class="loading ? 'text-slate-500' : online ? 'text-emerald-700' : 'text-slate-500'"
-            role="status"
-            aria-live="polite"
-          >
-            <span
-              class="h-2 w-2 rounded-full"
-              :class="loading ? 'animate-pulse bg-slate-300' : online ? 'bg-emerald-500' : 'bg-slate-300'"
-            />
-            {{ loading ? '正在检查' : online ? '服务在线' : '服务离线' }}
-          </span>
-          <button
-            type="button"
-            class="grid h-8 w-8 place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="loading"
-            aria-label="刷新本地服务状态"
-            title="刷新本地服务状态"
-            @click="refreshService"
-          >
-            <RefreshCw class="h-4 w-4" :class="loading ? 'animate-spin' : ''" />
-          </button>
-        </div>
+  <div class="settings-shell">
+    <header class="shell-header">
+      <div class="flex items-center gap-3">
+        <img :src="brandIcon" width="30" height="30" alt="" /><strong
+          >Fast Social</strong
+        >
       </div>
-
-      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <nav class="flex gap-1" aria-label="设置分类">
-          <button
-            type="button"
-            class="relative min-h-12 px-4 text-sm font-semibold transition"
-            :class="navigation.area === 'basic' ? 'text-blue-700' : 'text-slate-500 hover:text-slate-900'"
-            :aria-current="navigation.area === 'basic' ? 'page' : undefined"
-            @click="openBasic"
-          >
-            插件基础设置
-            <span v-if="navigation.area === 'basic'" class="absolute inset-x-3 bottom-0 h-0.5 rounded-t bg-blue-600" />
-          </button>
-          <button
-            type="button"
-            class="relative min-h-12 px-4 text-sm font-semibold transition"
-            :class="navigation.area === 'server' ? 'text-blue-700' : 'text-slate-500 hover:text-slate-900'"
-            :aria-current="navigation.area === 'server' ? 'page' : undefined"
-            @click="openServer"
-          >
-            服务端设置
-            <span v-if="navigation.area === 'server'" class="absolute inset-x-3 bottom-0 h-0.5 rounded-t bg-blue-600" />
-          </button>
-        </nav>
+      <div class="flex items-center gap-3">
+        <span
+          class="text-xs"
+          :class="serviceIncompatible || settingsError ? 'text-amber-600' : online ? 'text-emerald-600' : 'text-slate-400'"
+          >● {{ loading ? "正在连接" : serviceIncompatible ? "服务需更新" : settingsError ? "配置加载失败" : online ? "服务在线" : "服务离线" }}</span
+        ><ActionButton action="refresh" label="刷新服务状态" :disabled="loading" @click="refreshService" :loading="loading" />
       </div>
     </header>
-
-    <main class="mx-auto max-w-7xl px-3 py-5 sm:px-6 sm:py-7 lg:px-8">
-      <div v-if="navigation.area === 'basic'" class="rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm sm:p-7 lg:p-8">
-        <BasicSettings v-if="configReady" />
-        <div v-else class="grid min-h-64 place-items-center" role="status" aria-live="polite">
-          <div class="text-center">
-            <span class="mx-auto block h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
-            <p class="mt-3 text-sm text-slate-500">正在读取插件设置…</p>
-          </div>
-        </div>
-      </div>
-      <div v-else class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <ServerSettings :section="navigation.serverSection" @navigate="openServerSection" />
-      </div>
-    </main>
-
+    <div class="shell-body">
+      <aside class="shell-sidebar">
+        <p>插件 · 本地保存</p>
+        <button data-ui="navigation" title="插件设置"
+          :class="{ active: navigation.area === 'basic' }"
+          @click="openBasic"
+        >
+          <Settings2 :size="16" />插件设置
+        </button>
+        <p class="mt-7">服务端 · 集中管理</p>
+        <button data-ui="navigation" :title="item.label"
+          v-for="item in navigationItems"
+          :key="item.key"
+          :class="{
+            active:
+              navigation.area === 'server' &&
+              navigation.serverSection === item.key,
+          }"
+          @click="openServerSection(item.key)"
+        >
+          <component :is="item.icon" :size="16" />{{ item.label }}
+        </button>
+      </aside>
+      <main class="shell-main">
+        <template v-if="navigation.area === 'basic'"
+          ><BasicSettings v-if="configReady" />
+          <p v-else class="text-sm text-slate-400">
+            正在读取插件设置…
+          </p></template
+        ><ServerSettings
+          v-else
+          :section="navigation.serverSection"
+          @navigate="openServerSection"
+        />
+      </main>
+    </div>
     <TestResultDialog :result="testResult" @close="closeTestResult" />
-
-    <Transition
-      enter-active-class="transition duration-200 ease-out"
-      enter-from-class="translate-y-2 opacity-0"
-      enter-to-class="translate-y-0 opacity-100"
-      leave-active-class="transition duration-150 ease-in"
-      leave-from-class="translate-y-0 opacity-100"
-      leave-to-class="translate-y-2 opacity-0"
-    >
-      <div
-        v-if="notice"
-        class="fixed bottom-5 right-5 z-[60] max-w-sm rounded-xl border px-4 py-3 text-sm font-medium shadow-xl"
-        :class="notice.type === 'error'
+    <div
+      v-if="notice"
+      class="fixed bottom-5 right-5 z-[60] max-w-sm rounded-lg border px-4 py-3 text-sm shadow-lg"
+      :class="
+        notice.type === 'error'
           ? 'border-red-200 bg-red-50 text-red-700'
           : notice.type === 'warning'
-            ? 'border-amber-200 bg-amber-50 text-amber-800'
-            : 'border-emerald-200 bg-emerald-50 text-emerald-700'"
-        role="status"
-        aria-live="polite"
-      >
-        {{ notice.text }}
-      </div>
-    </Transition>
+          ? 'border-amber-200 bg-amber-50 text-amber-800'
+          : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      "
+      role="status"
+    >
+      {{ notice.text }}
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { RefreshCw } from "lucide-vue-next";
+import ActionButton from "../../components/ui/ActionButton.vue";
+import {
+  Settings2,
+  Users,
+  MessageSquareText,
+  Bot,
+  Cable,
+  RadioTower,
+  UserRoundCheck,
+} from "lucide-vue-next";
 import { onBeforeUnmount, onMounted, provide, ref } from "vue";
+import "./settings.css";
 import brandIcon from "../../assets/icons/icon-128.png";
 import { initConfig } from "../../common/storage-config";
 import BasicSettings from "./components/BasicSettings.vue";
@@ -119,10 +93,7 @@ import {
   saveOptionNavigation,
 } from "./option-navigation";
 import type { OptionNavigation, ServerSection } from "./option-navigation";
-import {
-  SERVER_ADMIN_KEY,
-  useServerAdmin,
-} from "./use-server-admin";
+import { SERVER_ADMIN_KEY, useServerAdmin } from "./use-server-admin";
 
 const admin = useServerAdmin();
 provide(SERVER_ADMIN_KEY, admin);
@@ -130,6 +101,8 @@ provide(SERVER_ADMIN_KEY, admin);
 const {
   loading,
   online,
+  serviceIncompatible,
+  settingsError,
   notice,
   testResult,
   refreshService,
@@ -140,9 +113,19 @@ const configReady = ref(false);
 const initialNavigation = loadOptionNavigation(window.location.hash);
 const navigation = ref<OptionNavigation>(initialNavigation);
 const lastServerSection = ref<ServerSection>(
-  initialNavigation.area === "server" ? initialNavigation.serverSection : "overview",
+  initialNavigation.area === "server"
+    ? initialNavigation.serverSection
+    : "accounts"
 );
 
+const navigationItems = [
+  { key: "accounts" as const, label: "账号设置", icon: Users },
+  { key: "following" as const, label: "关注列表", icon: UserRoundCheck },
+  { key: "skills" as const, label: "互动 Skills", icon: MessageSquareText },
+  { key: "ai" as const, label: "AI 服务", icon: Bot },
+  { key: "connections" as const, label: "连接配置", icon: Cable },
+  { key: "workflows" as const, label: "动作监听", icon: RadioTower },
+];
 function applyNavigation(next: OptionNavigation) {
   navigation.value = next;
   if (next.area === "server") lastServerSection.value = next.serverSection;
@@ -191,3 +174,96 @@ onBeforeUnmount(() => {
   window.removeEventListener("hashchange", handleHashChange);
 });
 </script>
+
+<style scoped>
+.settings-shell {
+  min-height: 100vh;
+  background: #f6f7fb;
+  color: #243044;
+  font-size: 14px;
+}
+.shell-header {
+  height: 68px;
+  max-width: 1280px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 26px;
+  background: #fff;
+  border-bottom: 1px solid #e4e8ef;
+}
+.shell-body {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  min-height: calc(100vh - 68px);
+}
+.shell-sidebar {
+  background: #fafbfe;
+  border-right: 1px solid #e4e8ef;
+  padding: 24px 12px;
+}
+.shell-sidebar p {
+  font-size: 10px;
+  letter-spacing: 0.7px;
+  color: #8b94a3;
+  padding: 0 10px 12px;
+}
+.shell-sidebar button {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 12px 10px;
+  border-radius: 7px;
+  margin-bottom: 4px;
+  text-align: left;
+  font-size: 13px;
+  color: #637087;
+}
+.shell-sidebar button.active {
+  background: #ecf0fe;
+  color: #4260bb;
+  font-weight: 600;
+}
+.shell-main {
+  padding: 28px;
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  align-self: start;
+  min-height: calc(100vh - 68px);
+}
+@media (max-width: 750px) {
+  .shell-body {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+    grid-template-columns: 1fr;
+  }
+  .shell-sidebar {
+    display: flex;
+    overflow: auto;
+    padding: 8px;
+    border-bottom: 1px solid #e4e8ef;
+    gap: 5px;
+  }
+  .shell-sidebar p {
+    display: none;
+  }
+  .shell-sidebar button {
+    min-width: max-content;
+    width: auto;
+    margin: 0;
+  }
+  .shell-main {
+    padding: 18px;
+  }
+  .shell-header {
+    padding: 0 18px;
+  }
+}
+</style>

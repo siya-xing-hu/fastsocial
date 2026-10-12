@@ -1,106 +1,262 @@
 <template>
-  <section aria-labelledby="prompts-title">
-    <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+  <section class="settings-page">
+    <header class="page-heading">
       <div>
-        <h2 id="prompts-title" class="text-2xl font-semibold tracking-tight text-slate-900">互动 Prompt</h2>
-        <p class="mt-1.5 max-w-2xl text-sm leading-6 text-slate-600">定义 X 页面中 AI 发帖和回复的快捷模板；越靠上的模板优先显示。</p>
+        <h2>Prompt 模板</h2>
+        <p class="subtitle">用于 AI 翻译、动作监听，以及关联账号的 Skill 写作参考。</p>
       </div>
-      <button type="button" class="primary-button" :disabled="!settings || busyAction !== null" @click="openDialog()"><Plus class="h-4 w-4" />新建模板</button>
+      <ActionButton action="add" label="新建模板" :disabled="!settings || busyAction !== null" @click="create" />
     </header>
-
-    <div v-if="!settings" class="error-card mt-5">{{ settingsError || 'Prompt 配置暂时不可用，请刷新后重试。' }}</div>
-
-    <template v-else>
-      <div v-if="settings.interactionPrompts.length === 0" class="mt-5 grid min-h-48 place-items-center rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center">
-        <div><MessageSquareText class="mx-auto h-7 w-7 text-slate-400" /><p class="mt-3 text-sm font-medium text-slate-700">还没有互动 Prompt</p><p class="mt-1 text-xs text-slate-500">没有启用模板时，插件不会显示对应 AI 快捷入口。</p></div>
-      </div>
-      <div v-else class="mt-5 space-y-3">
-        <article v-for="(prompt, index) in settings.interactionPrompts" :key="prompt.id" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300">
-          <div class="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <div class="min-w-0 flex-1">
-              <div class="flex flex-wrap items-center gap-2">
-                <h3 class="font-semibold text-slate-900">{{ prompt.name }}</h3>
-                <span class="status-badge bg-blue-50 text-blue-700">{{ prompt.scene === 'post' ? '发帖' : '回复' }}</span>
-                <span class="status-badge" :class="prompt.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'">{{ prompt.enabled ? '已启用' : '已停用' }}</span>
-              </div>
-              <p class="mt-2 line-clamp-2 text-xs leading-5 text-slate-500">{{ prompt.prompt }}</p>
-            </div>
-            <div class="flex items-center gap-2">
-              <div class="mr-1 flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5">
-                <button type="button" class="order-button" :aria-label="`上移 ${prompt.name}`" :disabled="busyAction !== null || index === 0" @click="movePrompt(index, -1)"><ArrowUp class="h-3.5 w-3.5" /></button>
-                <button type="button" class="order-button" :aria-label="`下移 ${prompt.name}`" :disabled="busyAction !== null || index === settings.interactionPrompts.length - 1" @click="movePrompt(index, 1)"><ArrowDown class="h-3.5 w-3.5" /></button>
-              </div>
-              <label class="mr-1 inline-flex items-center gap-2 text-xs font-medium text-slate-600"><input :checked="prompt.enabled" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" :disabled="busyAction !== null" @change="togglePrompt(prompt, ($event.target as HTMLInputElement).checked)" />启用</label>
-              <button type="button" class="icon-button" :aria-label="`编辑 ${prompt.name}`" :disabled="busyAction !== null" @click="openDialog(prompt)"><Pencil class="h-4 w-4" /></button>
-              <button type="button" class="icon-button text-red-600 hover:bg-red-50" :aria-label="`删除 ${prompt.name}`" :disabled="busyAction !== null" @click="confirmRemove(prompt.id)"><Trash2 class="h-4 w-4" /></button>
-            </div>
-          </div>
-        </article>
-      </div>
-    </template>
-
-    <OptionDialog
-      :open="dialogOpen"
-      :title="draft.id ? '编辑 Prompt' : '新建 Prompt'"
-      description="模板保存后会同步到插件的 X 页面快捷操作。"
-      :close-disabled="busyAction !== null"
-      @close="closeDialog"
-    >
-      <fieldset :disabled="busyAction !== null" class="min-w-0 space-y-4 border-0 p-0 disabled:opacity-70">
-        <label class="block"><span class="field-label">名称</span><input v-model="draft.name" class="field-input" placeholder="英文发帖润色" /></label>
-        <label class="block"><span class="field-label">使用场景</span><select v-model="draft.scene" class="field-input"><option value="post">发帖</option><option value="reply">回复</option></select></label>
-        <label class="block"><span class="field-label">Prompt 内容</span><textarea v-model="draft.prompt" class="field-input min-h-40 resize-y leading-6" placeholder="可使用 {userContent}、{replyContent}" /><span class="field-help">保持描述具体，明确希望 AI 输出的语言、语气和长度。</span></label>
-        <label class="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700"><input v-model="draft.enabled" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />启用此模板</label>
-      </fieldset>
-      <template #footer>
-        <div class="flex justify-end gap-3">
-          <button type="button" class="secondary-button" :disabled="busyAction !== null" @click="closeDialog">取消</button>
-          <button type="button" class="primary-button" :disabled="busyAction !== null" @click="submitDraft">{{ busyAction === 'prompts' ? '保存中…' : '保存模板' }}</button>
+    <div class="instructions">
+      <strong>使用说明</strong><span><code>{input}</code> 输入</span
+      ><span><code>{reply}</code> 原帖</span
+      ><span v-pre
+        ><code>{{ _tl_ }}</code> 目标语言</span
+      >
+    </div>
+    <p v-if="!settings" class="error">{{ settingsError || "模板读取失败" }}</p>
+    <div v-else class="panel">
+      <div class="panel-heading">
+        <div class="toolbar">
+          <button data-ui="choice" :title="s.label"
+            v-for="s in scenes"
+            :key="s.value"
+            class="btn"
+            :class="{ primary: filter === s.value }"
+            :disabled="busyAction !== null"
+            @click="changeFilter(s.value)"
+          >
+            {{ s.label }}
+          </button>
         </div>
-      </template>
-    </OptionDialog>
+        <span class="muted">{{ visible.length }} 个模板</span>
+      </div>
+      <div class="prompt-workspace">
+        <aside class="prompt-list">
+          <button data-ui="choice" :title="p.name"
+            v-for="p in visible"
+            :key="p.id"
+            class="prompt-item"
+            :class="{ selected: draft.id === p.id }"
+            :disabled="busyAction !== null"
+            @click="select(p)"
+          >
+            <div class="flex justify-between gap-2">
+              <strong>{{ p.name }}</strong
+              ><span class="badge">{{
+                p.scene === "post" ? "发帖" : "回复"
+              }}</span>
+            </div>
+            <span class="muted">{{
+              p.accountIds?.length
+                ? `已选 ${p.accountIds.length} 个账号`
+                : "未选择账号"
+            }}</span>
+          </button>
+          <p v-if="!visible.length" class="empty">暂无模板</p>
+        </aside>
+        <fieldset class="panel-body" :disabled="busyAction !== null">
+          <div class="flex justify-between mb-5">
+            <strong class="text-sm">{{
+              draft.id ? "编辑模板" : "新建模板"
+            }}</strong
+            ><span class="badge"
+              >已选 {{ draft.accountIds?.length ?? 0 }} 个账号</span
+            >
+          </div>
+          <div class="form-grid">
+            <label class="field"
+              >模板名称<input v-model="draft.name" class="input" /></label
+            ><label class="field"
+              >使用场景<select v-model="draft.scene" class="input">
+                <option value="post">发帖</option>
+                <option value="reply">回复</option>
+              </select></label
+            >
+          </div>
+          <label class="field mt-4"
+            >Prompt 内容<textarea
+              v-model="draft.prompt"
+              class="input !min-h-44"
+            />
+          </label>
+          <div class="field mt-4">
+            <span>适用账号</span>
+            <div class="account-choices">
+              <label v-for="a in settings.accounts" :key="a.id" class="choice"
+                ><input
+                  v-model="draft.accountIds"
+                  type="checkbox"
+                  :value="a.id"
+                /><span
+                  >{{ a.name
+                  }}<small class="muted block"
+                    >@{{ a.username || "待补充" }}</small
+                  ></span
+                ></label
+              >
+            </div>
+            <a
+              v-if="!settings.accounts.length"
+              class="text-blue-600"
+              href="#server/accounts"
+              >先添加账号</a
+            >
+          </div>
+          <div class="footer-actions">
+            <ActionButton action="delete" label="删除模板" v-if="draft.id" @click="remove" /><ActionButton action="up" label="置顶模板" v-if="draft.id" @click="moveTop" /><ActionButton action="save" label="保存模板" @click="save" />
+          </div>
+        </fieldset>
+      </div>
+    </div>
   </section>
 </template>
-
 <script setup lang="ts">
-import { ref } from "vue";
+import ActionButton from "../../../../components/ui/ActionButton.vue";
+import { computed, ref, watch } from "vue";
 import type { InteractionPrompt } from "@fast-social/contracts";
-import { ArrowDown, ArrowUp, MessageSquareText, Pencil, Plus, Trash2 } from "lucide-vue-next";
-import OptionDialog from "../OptionDialog.vue";
-import { emptyPromptDraft, promptToDraft, useServerAdminContext } from "../../use-server-admin";
-
-const { settings, settingsError, busyAction, savePrompts, savePromptDraft, removePrompt } = useServerAdminContext();
-const dialogOpen = ref(false);
-const draft = ref(emptyPromptDraft());
-
-function openDialog(prompt?: InteractionPrompt) { draft.value = prompt ? promptToDraft(prompt) : emptyPromptDraft(); dialogOpen.value = true; }
-function closeDialog() { if (busyAction.value === null) dialogOpen.value = false; }
-async function submitDraft() { if (await savePromptDraft(draft.value)) dialogOpen.value = false; }
-async function confirmRemove(id: string) { if (window.confirm("确定删除这个 Prompt？")) await removePrompt(id); }
-async function movePrompt(index: number, direction: -1 | 1) {
-  const prompts = settings.value?.interactionPrompts;
-  const targetIndex = index + direction;
-  if (!prompts || targetIndex < 0 || targetIndex >= prompts.length) return;
-  [prompts[index], prompts[targetIndex]] = [prompts[targetIndex], prompts[index]];
-  if (!(await savePrompts())) {
-    [prompts[index], prompts[targetIndex]] = [prompts[targetIndex], prompts[index]];
+import {
+  emptyPromptDraft,
+  promptToDraft,
+  useServerAdminContext,
+} from "../../use-server-admin";
+import { reorderInteractionPrompts } from "../../interaction-prompt-order";
+import { config, onInput } from "../../../../common/storage-config";
+import { confirmOperation } from '../../../../components/ui/confirm-operation';
+const {
+  settings,
+  settingsError,
+  busyAction,
+  savePromptDraft,
+  removePrompt,
+  savePrompts,
+} = useServerAdminContext();
+const scenes = [
+  { value: "all", label: "全部" },
+  { value: "post", label: "发帖" },
+  { value: "reply", label: "回复" },
+] as const;
+const filter = ref<"all" | "post" | "reply">("all"),
+  draft = ref(emptyPromptDraft());
+const visible = computed(
+  () =>
+    settings.value?.interactionPrompts.filter(
+      (p) => filter.value === "all" || p.scene === filter.value
+    ) ?? []
+);
+function select(p: InteractionPrompt) {
+  draft.value = promptToDraft(p);
+}
+function create() {
+  draft.value = emptyPromptDraft();
+}
+function changeFilter(value: typeof filter.value) {
+  filter.value = value;
+  if (!visible.value.some((p) => p.id === draft.value.id)) {
+    const first = visible.value[0];
+    first ? select(first) : create();
   }
 }
-async function togglePrompt(prompt: InteractionPrompt, enabled: boolean) {
-  const previous = prompt.enabled;
-  prompt.enabled = enabled;
-  if (!(await savePrompts())) prompt.enabled = previous;
+watch(
+  () => settings.value?.interactionPrompts,
+  (ps) => {
+    if (!draft.value.id && !draft.value.name && !draft.value.prompt && ps?.length)
+      select(ps[0]);
+  },
+  { immediate: true }
+);
+async function save() {
+  const id = draft.value.id;
+  if (await savePromptDraft(draft.value)) {
+    const p = id
+      ? settings.value?.interactionPrompts.find((p) => p.id === id)
+      : settings.value?.interactionPrompts[
+          settings.value.interactionPrompts.length - 1
+        ];
+    if (p) {
+      select(p);
+      filter.value = "all";
+      if (config.value.translationService.promptId === p.id) {
+        config.value.translationService.translatePrompt = p.prompt;
+        config.value.translationService.promptName = p.name;
+        onInput();
+      }
+    }
+  }
+}
+async function remove() {
+  if (
+    (await confirmOperation({title: '确认删除模板', message: '删除模板及其账号关联？'})) &&
+    (await removePrompt(draft.value.id))
+  ) {
+    const p = visible.value[0];
+    p ? select(p) : create();
+  }
+}
+async function moveTop() {
+  if (!settings.value) return;
+  const old = settings.value.interactionPrompts;
+  settings.value.interactionPrompts = reorderInteractionPrompts(
+    old,
+    draft.value.id,
+    "top"
+  );
+  if (!(await savePrompts())) settings.value.interactionPrompts = old;
 }
 </script>
-
 <style scoped>
-.field-label { @apply mb-2 block text-sm font-medium text-slate-700; }
-.field-input { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100; }
-.field-help { @apply mt-2 block text-xs leading-5 text-slate-500; }
-.primary-button { @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50; }
-.secondary-button { @apply inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50; }
-.icon-button { @apply inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50; }
-.order-button { @apply inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-30; }
-.status-badge { @apply rounded-full px-2 py-0.5 text-[10px] font-semibold; }
-.error-card { @apply rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700; }
+.instructions {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  flex-wrap: wrap;
+  border: 1px solid #e3e7ef;
+  border-radius: 8px;
+  padding: 13px 16px;
+  font-size: 11px;
+  color: #7d889a;
+  background: #f9faff;
+}
+.instructions strong {
+  color: #475366;
+}
+.prompt-workspace {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+}
+.prompt-list {
+  border-right: 1px solid #e7eaf0;
+  padding: 8px;
+}
+.prompt-item {
+  width: 100%;
+  text-align: left;
+  padding: 14px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.prompt-item.selected {
+  background: #f1f5ff;
+  border-color: #dbe3f7;
+}
+.prompt-item .muted {
+  display: block;
+  font-size: 10px;
+  margin-top: 7px;
+}
+@media (max-width: 850px) {
+  .prompt-workspace {
+    grid-template-columns: 1fr;
+  }
+  .prompt-list {
+    display: flex;
+    overflow: auto;
+    border-right: 0;
+    border-bottom: 1px solid #e7eaf0;
+  }
+  .prompt-item {
+    min-width: 170px;
+  }
+}
 </style>

@@ -60,7 +60,7 @@ export interface LocalServiceRequestMessage {
   type: RuntimeMessageTypeEnum.LOCAL_SERVICE_REQUEST;
   data: {
     path: string;
-    method?: "GET" | "POST" | "PUT" | "DELETE";
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     body?: unknown;
   };
 }
@@ -105,6 +105,7 @@ export interface OkRuntimeMessageResponse {
 export interface ErrorRuntimeMessageResponse {
   is_ok: false;
   error: any;
+  code?: string;
 }
 
 // 封装 chrome.runtime.sendMessage 统一处理

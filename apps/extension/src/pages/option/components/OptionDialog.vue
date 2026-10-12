@@ -3,7 +3,7 @@
     <Dialog
       as="div"
       class="relative z-50"
-      :initial-focus="closeButton"
+      :initial-focus="closeButton?.element"
       @close="requestClose"
     >
       <TransitionChild
@@ -42,16 +42,13 @@
                     {{ description }}
                   </DialogDescription>
                 </div>
-                <button
+                <ActionButton
                   ref="closeButton"
-                  type="button"
-                  class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  aria-label="关闭"
+                  action="close"
+                  label="关闭"
                   :disabled="closeDisabled"
                   @click="requestClose"
-                >
-                  <X class="h-4 w-4" />
-                </button>
+                />
               </header>
 
               <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
@@ -79,7 +76,7 @@ import {
   TransitionChild,
   TransitionRoot,
 } from "@headlessui/vue";
-import { X } from "lucide-vue-next";
+import ActionButton from "../../../components/ui/ActionButton.vue";
 
 const props = defineProps<{
   open: boolean;
@@ -92,7 +89,7 @@ const emit = defineEmits<{
   close: [];
 }>();
 
-const closeButton = ref<HTMLButtonElement | null>(null);
+const closeButton = ref<InstanceType<typeof ActionButton> | null>(null);
 
 function requestClose() {
   if (!props.closeDisabled) emit("close");

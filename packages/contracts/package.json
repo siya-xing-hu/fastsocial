@@ -9,6 +9,10 @@
     "build": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/twitter-text": "^3.1.10",
     "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "twitter-text": "3.1.0"
   }
 }

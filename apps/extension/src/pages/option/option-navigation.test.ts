@@ -40,10 +40,10 @@ test("parses basic and every server section", () => {
   assert.deepEqual(parseOptionNavigation("#basic"), {
     hash: "#basic",
     area: "basic",
-    serverSection: "overview",
+    serverSection: "accounts",
   });
 
-  for (const section of ["overview", "connections", "ai", "monitors", "prompts"] as const) {
+  for (const section of ["accounts", "following", "connections", "ai", "workflows", "skills"] as const) {
     assert.deepEqual(parseOptionNavigation(`#server/${section}`), {
       hash: `#server/${section}`,
       area: "server",
@@ -57,15 +57,15 @@ test("falls back to basic for unsupported or malformed hashes", () => {
     assert.deepEqual(parseOptionNavigation(hash), {
       hash: DEFAULT_OPTION_HASH,
       area: "basic",
-      serverSection: "overview",
+      serverSection: "accounts",
     });
   }
 });
 
 test("loads the stored route only when the URL has no hash", () => {
-  const storage = memoryStorage("#server/monitors");
+  const storage = memoryStorage("#server/workflows");
 
-  assert.equal(loadOptionNavigation("", storage).hash, "#server/monitors");
+  assert.equal(loadOptionNavigation("", storage).hash, "#server/workflows");
   assert.equal(loadOptionNavigation("#server/ai", storage).hash, "#server/ai");
   assert.equal(loadOptionNavigation("#broken", storage).hash, DEFAULT_OPTION_HASH);
 });
@@ -73,9 +73,14 @@ test("loads the stored route only when the URL has no hash", () => {
 test("saving normalizes invalid routes before persisting", () => {
   const storage = memoryStorage();
 
-  assert.equal(saveOptionNavigation("#server/prompts", storage), "#server/prompts");
-  assert.equal(loadOptionNavigation("", storage).hash, "#server/prompts");
+  assert.equal(saveOptionNavigation("#server/prompts", storage), "#server/skills");
+  assert.equal(loadOptionNavigation("", storage).hash, "#server/skills");
 
   assert.equal(saveOptionNavigation("#invalid", storage), DEFAULT_OPTION_HASH);
   assert.equal(loadOptionNavigation("", storage).hash, DEFAULT_OPTION_HASH);
+});
+
+test("old monitoring navigation opens unified workflows",()=>{
+  assert.equal(parseOptionNavigation('#server/monitors').hash,'#server/workflows');
+  assert.equal(parseOptionNavigation('#server/outreach').hash,'#server/workflows');
 });

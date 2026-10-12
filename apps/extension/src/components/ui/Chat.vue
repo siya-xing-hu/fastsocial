@@ -12,12 +12,8 @@
             <span>AI 聊天助手</span>
           </h3>
           <div class="flex gap-2">
-            <button @click="clearChatHistory" class="hover:bg-red-200 p-1 rounded-full">
-              <Trash2 class="h-4 w-4" />
-            </button>
-            <button @click="close" class="hover:bg-gray-200 p-1 rounded-full">
-              <X class="h-5 w-5 text-gray-600" />
-            </button>
+            <ActionButton action="delete" label="清空聊天记录" @click="clearChatHistory" />
+            <ActionButton action="close" label="关闭聊天" @click="close" />
           </div>
         </div>
         
@@ -82,13 +78,7 @@
         </div>
 
         <!-- 滚动到底部按钮 - 放在滚动容器外部但仍在messagesContainer内 -->
-        <button 
-          v-if="showScrollToBottom" 
-          @click="scrollToBottom" 
-          class="absolute bottom-5 right-5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-full p-2 shadow-md transition-all duration-200 z-50"
-        >
-          <ChevronsDown class="h-5 w-5" />
-        </button>
+        <ActionButton action="down" label="滚动到底部" v-if="showScrollToBottom" @click="scrollToBottom" class="absolute bottom-5 right-5 z-50" />
       </div>
       
       <!-- 底部输入区域 -->
@@ -106,13 +96,7 @@
             ></textarea>
             
             <!-- 发送按钮 -->
-            <button
-              @click="sendMessage"
-              class="absolute bottom-3 right-3 confirm-button rounded-full p-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-              :disabled="isLoading || !inputContent.trim() || !serviceOnline"
-            >
-              <Send class="h-4 w-4" />
-            </button>
+            <ActionButton action="send" label="发送" @click="sendMessage" :disabled="isLoading || !inputContent.trim() || !serviceOnline" class="absolute bottom-3 right-3" :loading="isLoading" />
           </div>
         </div>
         
@@ -125,12 +109,14 @@
 </template>
 
 <script setup lang="ts">
+import ActionButton from "./ActionButton.vue";
 import { ref, onMounted, watch, nextTick, onBeforeUnmount } from "vue";
 import { AIGenarateRuntimeMessage, Message, RuntimeMessageTypeEnum, sendRuntimeMessage } from "../../common/runtime-message";
 import { log_error, log_info } from "../../common/logging";
-import { X, MessageSquare, Send, User, Bot, Trash2, ChevronsDown } from "lucide-vue-next";
+import { MessageSquare, User, Bot } from "lucide-vue-next";
 import MarkdownRenderer from "./MarkdownRenderer.vue";
 import { requestLocalService } from "../../common/local-service";
+import { confirmOperation } from './confirm-operation';
 
 // Props 和 Emits
 const props = defineProps({
@@ -184,6 +170,7 @@ const handleScroll = () => {
 // 发送消息
 async function sendMessage() {
   if (isLoading.value || !inputContent.value.trim() || !serviceOnline.value) return;
+  if (!await confirmOperation({title: '确认 AI 生成', message: '将本轮输入和对话记录发送给 AI 生成回复，消耗 AI 用量。是否继续？'})) return;
   
   // 添加用户消息
   const userMessage: Message = {

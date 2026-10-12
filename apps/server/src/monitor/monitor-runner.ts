@@ -1,15 +1,20 @@
 import { createHash } from 'node:crypto';
-import type { AccountMemory, AccountProfile, AccountProfileView, Monitor, MonitorBatchStatus, MonitorTestResult, PostDecision, SocialAccount, SocialPost } from '@fast-social/contracts';
+import type { AccountMemory, AccountProfile, AccountProfileView, Monitor, MonitorBatchStatus, MonitorTestResult, PostDecision, SocialAccount, SocialPost, Workflow } from '@fast-social/contracts';
 import type { SocialAdapter } from '../adapters/social-adapter.ts';
 import { activeMemory, bioSource, INPUT_BUDGET, inputSize, MAX_BATCH_POSTS, MEMORY_LIMIT, SECTIONS, estimateTokens, type BatchInput, type BatchMatcher } from '../ai/batch-matcher.ts';
 import type { AccountRepository } from '../repositories/account-repository.ts';
 import type { MonitorRepository } from '../repositories/monitor-repository.ts';
 import type { TelegramNotifier } from '../telegram/telegram-notifier.ts';
+import type { ReportAnalysisProgress } from '../workflows/progress.ts';
+import { trace } from '../observability/trace.ts';
+import { withQueuedXRequests } from '../adapters/x/request-queue.ts';
 
 interface RunnerDependencies {
   monitors: MonitorRepository; social: SocialAdapter; matcher: BatchMatcher;
   accounts: AccountRepository; telegram: TelegramNotifier;
 }
+export interface UserWorkflowBatch { posts: SocialPost[]; decisions: PostDecision[]; memory: AccountMemory; profile: AccountProfile; cursor: string | null }
+export const MAX_WORKFLOW_TIMELINE_PAGES = 5;
 export class MonitorRunner {
   private readonly locks = new Map<string, Promise<unknown>>();
   private readonly dependencies: RunnerDependencies;
@@ -24,12 +29,15 @@ export class MonitorRunner {
       const key = monitor.username.toLowerCase();
       groups.set(key, [...(groups.get(key) ?? []), id]);
     }
-    await Promise.all([...groups].map(([key, group]) => this.lock(key, () => this.runGroup(group))));
+    await withQueuedXRequests(() => Promise.all([...groups].map(([key, group]) => this.lock(key, () => this.runGroup(group)))));
   }
 
   profile(id: string): AccountProfileView {
     const monitor = this.requireMonitor(id);
-    const profile = this.dependencies.accounts.profileByUsername(monitor.username);
+    return this.userProfile(monitor.username, id);
+  }
+  userProfile(username: string, id: string): AccountProfileView {
+    const profile = this.dependencies.accounts.profileByUsername(username);
     const evidenceIds = [...new Set(Object.values(profile?.memory ?? {}).flatMap(fact => fact.evidenceIds).filter(id => !id.startsWith('bio:') && id !== 'manual'))];
     return { profile: profile ? { ...profile, memory: activeMemory(profile.memory) } : null,
       evidence: profile ? this.dependencies.accounts.posts(profile.account.id, evidenceIds) : [],
@@ -38,8 +46,11 @@ export class MonitorRunner {
 
   async editProfile(id: string, text: string): Promise<AccountProfileView> {
     const monitor = this.requireMonitor(id);
-    return this.lock(monitor.username.toLowerCase(), async () => {
-      const profile = this.dependencies.accounts.profileByUsername(monitor.username);
+    return this.editUserProfile(monitor.username, id, text);
+  }
+  async editUserProfile(username: string, id: string, text: string): Promise<AccountProfileView> {
+    return this.lock(username.toLowerCase(), async () => {
+      const profile = this.dependencies.accounts.profileByUsername(username);
       if (!profile) throw new Error('账号尚未完成首次学习');
       if ([...text].length > MEMORY_LIMIT) throw new Error('画像最多 250 字');
       const lines = text.trim().split('\n').filter(Boolean);
@@ -54,7 +65,77 @@ export class MonitorRunner {
         if (content) memory[section] = { text: content, evidenceIds: ['manual'], kind: 'manual', updatedAt: new Date().toISOString() };
       }
       this.dependencies.accounts.saveProfile({ ...profile, memory, version: profile.version + 1, updatedAt: new Date().toISOString() });
-      return this.profile(id);
+      return this.userProfile(username, id);
+    });
+  }
+
+  /** Manual refresh rebuilds from current public sources without reusing memory or moving any rule's cursor. */
+  async rebuildUserProfile(username: string, id: string, cookieId: string, ensureCurrent: () => void): Promise<AccountProfileView> {
+    return this.lock(username.toLowerCase(), async () => {
+      ensureCurrent();
+      const { social, accounts } = this.dependencies;
+      if (!social.fetchAccount) throw new Error('平台适配器不支持账号简介');
+      // Explicit refresh bypasses the daily profile cache.
+      const account = await social.fetchAccount(username, cookieId);
+      const posts = await this.fetchWindow(account, null, 20, false, cookieId);
+      const result = await this.analyze(account, {}, posts, [], true, false);
+      ensureCurrent();
+      const previous = accounts.profile(account.id);
+      accounts.saveLearning({ account, memory: result.memory, initialized: true, bioSource: bioSource(account),
+        version: (previous?.version ?? 0) + 1, updatedAt: new Date().toISOString() }, posts);
+      return this.userProfile(username, id);
+    });
+  }
+
+  /** The workflow uses the same evidence, pagination, memory validation and per-user lock as the original listener. */
+  async withWorkflowBatch<T>(workflow: Workflow, cookieId: string, preview: boolean,
+    work: (batch: UserWorkflowBatch) => Promise<T>, commit: (cursor: string | null) => void = () => {}, report?: ReportAnalysisProgress,
+    scan?: (postIds: string[]) => void, hasSeen: (postId: string) => boolean = () => false): Promise<T> {
+    const username = workflow.usernames[0];
+    if (workflow.source !== 'user' || workflow.usernames.length !== 1 || !username) throw new Error('每条监听只能指定一个用户');
+    return this.lock(username.toLowerCase(), async () => {
+      const accounts = this.dependencies.accounts;
+      const status: MonitorBatchStatus = { fetched: 0, analyzed: 0, matched: 0, uncertain: 0, pending: 0, phase: 'fetch', error: null, checkedAt: new Date().toISOString() };
+      try {
+        const { account, profile } = await this.account(username, cookieId);
+        const needsLearning = !profile?.initialized;
+        const window = await this.fetchWorkflowWindow(account, !preview, cookieId);
+        trace('timeline.window', '指定用户帖子读取完成', { username, count: window.length, posts: window });
+        status.fetched = window.length;
+        scan?.(window.map(post => post.id));
+        const candidates = window.filter(post => {
+          if (preview || !hasSeen(post.id)) return true;
+          trace('workflow.post.filtered', '帖子不参与本轮 AI 判断', { postId: post.id, author: post.author, reason: '已经处理' });
+          return false;
+        });
+        const rules = [{ id: workflow.id, prompt: workflow.condition, lastSeenPostId: null }];
+        const bioChanged = profile?.bioSource !== bioSource(account);
+        status.phase = needsLearning ? 'learn' : 'analyze'; status.pending = candidates.length;
+        const result = candidates.length || bioChanged || needsLearning
+          ? await this.analyze(account, activeMemory(profile?.memory ?? {}), candidates, rules, bioChanged || needsLearning, false, this.support(profile), report)
+          : { memory: activeMemory(profile?.memory ?? {}), decisions: [] };
+        // Informational only: unseen IDs below this value remain eligible next time.
+        const previous = workflow.lastSeenPostId ?? null;
+        const latest = window.at(-1)?.id;
+        const cursor = latest && after(latest, previous) ? latest : previous;
+        const nextProfile: AccountProfile = { account, memory: result.memory, initialized: true, bioSource: bioSource(account),
+          version: (profile?.version ?? 0) + (JSON.stringify(profile?.memory) !== JSON.stringify(result.memory) ? 1 : 0), updatedAt: new Date().toISOString() };
+        const value = await work({ ...result, posts: candidates, profile: nextProfile, cursor });
+        if (!preview) {
+          accounts.transaction(() => {
+            commit(cursor);
+            accounts.saveProfile(nextProfile);
+            accounts.saveDecisions(workflow.id, result.decisions);
+            accounts.saveStatus(workflow.id, { ...status, analyzed: result.decisions.length, matched: result.decisions.filter(d => d.status === 'match').length,
+              uncertain: result.decisions.filter(d => d.status === 'uncertain').length, pending: 0, phase: 'done', baselinePending: false });
+          });
+          trace('profile.updated', '监听画像与处理记录已保存', { username, latestPostId: cursor, profileVersion: nextProfile.version, memory: nextProfile.memory });
+        }
+        return value;
+      } catch (error) {
+        if (!preview) accounts.saveStatus(workflow.id, { ...status, error: error instanceof Error ? error.message : String(error), baselinePending: false });
+        throw error;
+      }
     });
   }
 
@@ -147,35 +228,65 @@ export class MonitorRunner {
     }
   }
 
-  private async account(username: string): Promise<{ account: SocialAccount; profile: AccountProfile | null }> {
+  private async account(username: string, cookieId?: string): Promise<{ account: SocialAccount; profile: AccountProfile | null }> {
     const profile = this.dependencies.accounts.profileByUsername(username);
     if (profile && Date.now() - Date.parse(profile.account.fetchedAt) < 86400000) return { account: profile.account, profile };
     if (!this.dependencies.social.fetchAccount) throw new Error('平台适配器不支持账号简介');
-    const account = await this.dependencies.social.fetchAccount(username);
+    const account = await this.dependencies.social.fetchAccount(username, cookieId);
     return { account, profile: this.dependencies.accounts.profile(account.id) };
   }
 
-  private async fetchWindow(account: SocialAccount, boundary: string | null, minimum: number, persist: boolean): Promise<SocialPost[]> {
-    const results = await Promise.allSettled((['posts', 'replies'] as const).map(surface => this.fetchStream(account, boundary, minimum, persist, surface)));
+  /** One shared request budget for both surfaces; a seen/older item is never a paging boundary. */
+  private async fetchWorkflowWindow(account: SocialAccount, persist: boolean, cookieId: string): Promise<SocialPost[]> {
+    const { social, accounts } = this.dependencies;
+    if (!social.fetchTimelinePage) throw new Error('平台适配器不支持时间线分页');
+    const streams = (['posts', 'replies'] as const).map(surface => ({ surface, cursor: undefined as string | undefined, done: false, cursors: new Set<string>() }));
+    const posts = new Map<string, SocialPost>();
+    let pages = 0, next = 0;
+    while (pages < MAX_WORKFLOW_TIMELINE_PAGES && streams.some(stream => !stream.done)) {
+      const stream = streams[next++ % streams.length]!;
+      if (stream.done) continue;
+      pages++;
+      trace('timeline.page.start', '读取用户时间线分页', { username: account.username, surface: stream.surface, page: pages, maxPages: MAX_WORKFLOW_TIMELINE_PAGES, cursor: stream.cursor });
+      const page = await social.fetchTimelinePage(account, stream.cursor, stream.surface, cookieId);
+      trace('timeline.page.done', '用户时间线分页已获取', { username: account.username, surface: stream.surface, page: pages, count: page.posts.length, nextCursor: page.nextCursor, posts: page.posts });
+      if (persist) accounts.savePosts(account.id, page.posts);
+      for (const post of page.posts) posts.set(post.id, post);
+      if (!page.nextCursor) stream.done = true;
+      else {
+        if (stream.cursors.has(page.nextCursor)) throw new Error('X 分页游标重复，本轮未提交处理进度');
+        stream.cursors.add(page.nextCursor); stream.cursor = page.nextCursor;
+      }
+    }
+    trace('timeline.fetch.finished', streams.some(stream => !stream.done) ? '已达到本轮 5 批抓取上限' : '用户时间线已无下一页',
+      { pages, maxPages: MAX_WORKFLOW_TIMELINE_PAGES, count: posts.size, reason: streams.some(stream => !stream.done) ? 'page_limit' : 'no_next_page' });
+    return uniquePosts([...posts.values()]);
+  }
+
+  private async fetchWindow(account: SocialAccount, boundary: string | null, minimum: number, persist: boolean, cookieId?: string): Promise<SocialPost[]> {
+    const results = await Promise.allSettled((['posts', 'replies'] as const).map(surface => this.fetchStream(account, boundary, minimum, persist, surface, cookieId)));
     const failure = results.find(result => result.status === 'rejected');
     if (failure?.status === 'rejected') throw failure.reason;
     const combined = uniquePosts(results.flatMap(result => result.status === 'fulfilled' ? result.value : []));
     return boundary || !minimum ? combined : combined.slice(-minimum);
   }
 
-  private async fetchStream(account: SocialAccount, boundary: string | null, minimum: number, persist: boolean, surface: 'posts' | 'replies'): Promise<SocialPost[]> {
+  private async fetchStream(account: SocialAccount, boundary: string | null, minimum: number, persist: boolean, surface: 'posts' | 'replies', cookieId?: string): Promise<SocialPost[]> {
     const { social, accounts } = this.dependencies;
     if (!social.fetchTimelinePage) throw new Error('平台适配器不支持时间线分页');
     const posts = new Map<string, SocialPost>();
     const cursors = new Set<string>();
     let cursor: string | undefined;
     for (let pageNumber = 0; pageNumber < 50; pageNumber += 1) {
-      const page = await social.fetchTimelinePage(account, cursor, surface);
+      trace('timeline.page.start', '读取用户时间线分页', { username: account.username, surface, page: pageNumber + 1, cursor, boundary });
+      const page = await social.fetchTimelinePage(account, cursor, surface, cookieId);
+      trace('timeline.page.done', '用户时间线分页已获取', { username: account.username, surface, page: pageNumber + 1, count: page.posts.length, nextCursor: page.nextCursor, posts: page.posts });
       if (persist) accounts.savePosts(account.id, page.posts);
       for (const post of page.posts) posts.set(post.id, post);
       const ordered = uniquePosts([...posts.values()]);
       const covered = boundary ? page.posts.length > 0 && page.posts.every(post => !after(post.id, boundary)) : minimum > 0 && ordered.length >= minimum;
-      if (!page.nextCursor || page.posts.length === 0 || (covered && ordered.length >= minimum)) {
+      // An empty filtered page can still have a continuation (e.g. conversation context or unavailable posts).
+      if (!page.nextCursor || (covered && ordered.length >= minimum)) {
         if (!boundary) return minimum ? ordered.slice(-minimum) : ordered;
         const learningIds = new Set(minimum ? ordered.slice(-minimum).map(post => post.id) : []);
         return ordered.filter(post => after(post.id, boundary) || learningIds.has(post.id));
@@ -193,7 +304,7 @@ export class MonitorRunner {
     return this.dependencies.accounts.posts(profile.account.id, ids).filter(post => estimateTokens(JSON.stringify(post)) < 1000).slice(-2);
   }
 
-  private async analyze(account: SocialAccount, initial: AccountMemory, posts: SocialPost[], rules: Monitor[], includeBio: boolean, excludeBaselines: boolean, support: SocialPost[] = []): Promise<{ memory: AccountMemory; decisions: PostDecision[] }> {
+  private async analyze(account: SocialAccount, initial: AccountMemory, posts: SocialPost[], rules: Pick<Monitor, 'id' | 'prompt' | 'lastSeenPostId'>[], includeBio: boolean, excludeBaselines: boolean, support: SocialPost[] = [], report?: ReportAnalysisProgress): Promise<{ memory: AccountMemory; decisions: PostDecision[] }> {
     let memory = initial;
     const decisions: PostDecision[] = [];
     let offset = 0;
@@ -213,10 +324,13 @@ export class MonitorRunner {
         if (context.length) { context = []; continue; }
         throw new Error('单帖或监听规则超出批次输入预算；请缩短规则，监听偏移量保持不变');
       }
+      const progress = { index: batchCount + 1, phase: rules.length ? 'analyze' as const : 'learn' as const, postIds: batch.map(post => post.id) };
+      report?.(progress);
       const result = await this.dependencies.matcher.analyze(input(batch));
       batchCount += 1;
       if (result.memory) memory = result.memory;
       decisions.push(...result.decisions);
+      report?.({ ...progress, decisions: result.decisions.map(d => ({ postId: d.postId, matched: d.status === 'match' })) });
       offset += batch.length;
       context = batch.slice(-2);
       includeBio = false;
@@ -228,8 +342,11 @@ export class MonitorRunner {
       const review: BatchInput = { account, memory, posts: reviewPosts, context,
         rules: rules.map(rule => ({ id: rule.id, prompt: rule.prompt, postIds: uncertain.filter(item => item.ruleId === rule.id).map(item => item.postId) })).filter(rule => rule.postIds.length), includeBio: false };
       if (reviewPosts.length && reviewPosts.length <= MAX_BATCH_POSTS && inputSize(review) <= INPUT_BUDGET) {
+        const progress = { index: batchCount + 1, phase: 'review' as const, postIds: reviewPosts.map(post => post.id) };
+        report?.(progress);
         const result = await this.dependencies.matcher.analyze(review);
         for (const decision of result.decisions) decisions.splice(decisions.findIndex(item => item.ruleId === decision.ruleId && item.postId === decision.postId), 1, decision);
+        report?.({ ...progress, decisions: result.decisions.map(d => ({ postId: d.postId, matched: d.status === 'match' })) });
       }
     }
     return { memory, decisions };

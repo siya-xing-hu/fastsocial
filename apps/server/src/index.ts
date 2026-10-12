@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { createApp } from "./app.ts";
 import { resolveHost, resolvePort } from "./runtime-config.ts";
+import { formatTrace } from './observability/trace.ts';
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 
@@ -36,6 +37,7 @@ async function start(): Promise<void> {
   const app = createApp({
     databasePath: resolve(dataDirectory, "fastsocial.db"),
     startScheduler: true,
+    traceSink: process.env.FAST_SOCIAL_TRACE === '0' ? undefined : entry => { process.stdout.write(formatTrace(entry)); },
   });
 
   const address = await app.listen({ host: resolveHost(), port: resolvePort() });

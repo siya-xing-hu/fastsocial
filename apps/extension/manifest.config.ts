@@ -26,6 +26,7 @@ const hostPermissions = isDevHostsEnabled
 export default defineManifest(async () => {
   return {
     manifest_version: 3,
+    minimum_chrome_version: "116",
     name: "Fast Social",
     description: "A Twitter Copilot Chrome Extension",
     version: version,
@@ -48,6 +49,10 @@ export default defineManifest(async () => {
       default_popup: "src/pages/popup/popup.html",
     },
     commands: {
+      "open-assistant": {
+        suggested_key: { default: "Alt+Shift+S" },
+        description: "打开或收起聊天助手",
+      },
       "open-options": {
         suggested_key: {
           default: "Alt+Shift+F",
@@ -56,6 +61,10 @@ export default defineManifest(async () => {
       },
     },
     options_page: "src/pages/option/option.html",
+    web_accessible_resources: [{
+      resources: ["src/pages/assistant/assistant.html"],
+      matches: ["https://x.com/*", "https://*.x.com/*"],
+    }],
     content_scripts: [
       {
         js: ["src/content-script.ts"],

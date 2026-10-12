@@ -1,25 +1,10 @@
 import { log_error } from "../../common/logging";
-import {
-  AIGenarateRuntimeMessage,
-  RuntimeMessageTypeEnum,
-  sendRuntimeMessage,
-} from "../../common/runtime-message";
-import {
-  config,
-  PromptConfig,
-} from "../../common/storage-config";
-import { setInputText } from "../../utils/kit";
+import { config } from "../../common/storage-config";
 import { translateContent } from "../translate/text-translator";
-import {
-  PromptData,
-  PromptLocationEnum,
-  createPromptContainer,
-  HandlerParams,
-  resetPromptContainers,
-} from "../ui/prompt";
-import { createDialogContainer } from "../ui/dialog";
-import type { InteractionPrompt } from "@fast-social/contracts";
+import type { AccountConfiguration } from "@fast-social/contracts";
+import { resolveAccountPolicy, xAccountIdentity } from "../../common/account-policy";
 import { requestLocalService } from "../../common/local-service";
+import { LocalServiceError } from "../../common/local-service-error";
 
 // 扩展 HTMLElement 接口以支持定时器属性
 interface ExtendedHTMLElement extends HTMLElement {
@@ -36,9 +21,10 @@ interface TranslateCache {
 
 // 存储翻译缓存
 const translateCache: Map<string, TranslateCache> = new Map();
-let serverPrompts: InteractionPrompt[] = [];
 let twitterGeneration = 0;
-let stopPromptObserver: (() => void) | null = null;
+let runtimeTimer: number | undefined;
+let activeAutoTranslate = false;
+let policyVersion = 0;
 let stopTranslateObserver: (() => void) | null = null;
 let translateTooltip: ExtendedHTMLElement | null = null;
 let areTranslateTooltipListenersInstalled = false;
@@ -51,11 +37,6 @@ interface TranslationBinding {
 }
 
 const translationBindings = new Map<HTMLElement, TranslationBinding>();
-
-interface AIOptionsResponse {
-  options: Array<{ value: string; label: string }>;
-  defaultProvider: string;
-}
 
 // 创建翻译提示框
 function createTranslateTooltip(): ExtendedHTMLElement {
@@ -143,45 +124,51 @@ function hideTranslateTooltip(tooltip: ExtendedHTMLElement) {
   }
 }
 
+function currentAccount() {
+  return xAccountIdentity(document.cookie,
+    document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]')?.textContent ?? '',
+    document.querySelector('[data-testid="AppTabBar_Profile_Link"]')?.getAttribute('href') ?? '');
+}
+
 export async function ttTwitterInit(url: string): Promise<void> {
   const generation = ++twitterGeneration;
-  stopPromptObserver?.();
-  stopPromptObserver = null;
-  stopTranslateObserver?.();
-  stopTranslateObserver = null;
-  resetPromptContainers();
-  resetTwitterTranslations();
-  serverPrompts = [];
-
-  if (config.value.basic.autoTranslate) {
-    ttTwitterTranslate(generation);
-    stopTranslateObserver = observeXDom(generation, () => {
-      cleanupDisconnectedTranslations();
-      if (config.value.basic.autoTranslate) ttTwitterTranslate(generation);
-    });
-  }
-
-  try {
-    const [prompts, ai] = await Promise.all([
-      requestLocalService<InteractionPrompt[]>("/api/prompts"),
-      requestLocalService<AIOptionsResponse>("/api/ai/options"),
+  window.clearInterval(runtimeTimer);
+  stopTranslateObserver?.(); stopTranslateObserver = null;
+  resetTwitterTranslations(); activeAutoTranslate = false;
+  const identity = JSON.stringify(currentAccount());
+  let refreshing = false;
+  let signature = '';
+  const refresh = async () => {
+    if (generation !== twitterGeneration || refreshing) return;
+    if (JSON.stringify(currentAccount()) !== identity) { void ttTwitterInit(window.location.href); return; }
+    refreshing = true;
+    const account = currentAccount();
+    const [remote] = await Promise.allSettled([
+      requestLocalService<AccountConfiguration>('/api/account-config?' + new URLSearchParams(account)),
     ]);
+    refreshing = false;
     if (generation !== twitterGeneration) return;
-
-    const hasDefaultProvider = ai.defaultProvider !== ""
-      && ai.options.some((option) => option.value === ai.defaultProvider);
-    if (!hasDefaultProvider) return;
-    serverPrompts = prompts;
-  } catch {
-    // AI actions stay hidden while the service or its default AI is unavailable.
-    return;
-  }
-
-  if (generation !== twitterGeneration) return;
-  mountPromptComposers(url, generation);
-  stopPromptObserver = observeXDom(generation, () => {
-    mountPromptComposers(window.location.href, generation);
+    if (JSON.stringify(currentAccount()) !== identity) { void ttTwitterInit(window.location.href); return; }
+    const serviceUnavailable = remote.status === 'rejected'
+      && remote.reason instanceof LocalServiceError
+      && remote.reason.code === 'LOCAL_SERVICE_UNAVAILABLE';
+    const policy = resolveAccountPolicy(config.value.basic.autoTranslate,
+      remote.status === 'fulfilled' ? remote.value : null, serviceUnavailable);
+    const nextSignature = JSON.stringify({ autoTranslate: policy.autoTranslate });
+    if (nextSignature === signature) return;
+    signature = nextSignature;
+    policyVersion++;
+    activeAutoTranslate = policy.autoTranslate;
+    resetTwitterTranslations();
+    if (activeAutoTranslate) ttTwitterTranslate(generation);
+  };
+  stopTranslateObserver = observeXDom(generation, () => {
+    if (JSON.stringify(currentAccount()) !== identity) { void ttTwitterInit(window.location.href); return; }
+    cleanupDisconnectedTranslations();
+    if (activeAutoTranslate) ttTwitterTranslate(generation);
   });
+  await refresh();
+  if (generation === twitterGeneration) runtimeTimer = window.setInterval(() => { void refresh(); }, 15_000);
 }
 
 function observeXDom(
@@ -203,128 +190,6 @@ function observeXDom(
     observer.disconnect();
     if (timeoutId !== undefined) window.clearTimeout(timeoutId);
   };
-}
-
-function findComposerRoot(toolbar: HTMLElement): HTMLElement | null {
-  let current = toolbar.parentElement;
-  while (current && current !== document.body) {
-    if (current.querySelector<HTMLElement>('div[data-testid="tweetTextarea_0"]')) {
-      return current;
-    }
-    current = current.parentElement;
-  }
-  return null;
-}
-
-function isStatusUrl(url: string): boolean {
-  try {
-    return /^\/[^/]+\/status\/\d+/.test(new URL(url).pathname);
-  } catch {
-    return false;
-  }
-}
-
-function getComposerScene(
-  toolbar: HTMLElement,
-  mainWrapper: HTMLElement,
-  url: string,
-): InteractionPrompt["scene"] {
-  const dialog = toolbar.closest<HTMLElement>('div[role="dialog"]');
-  const actionButton = mainWrapper.querySelector<HTMLElement>(
-    '[data-testid="tweetButton"], [data-testid="tweetButtonInline"]',
-  );
-  const actionLabel = `${actionButton?.getAttribute("aria-label") ?? ""} ${
-    actionButton?.textContent ?? ""
-  }`.toLowerCase();
-
-  if (/\breply\b|回复|回覆/.test(actionLabel)) return "reply";
-  if (/\bpost\b|发布|發佈|发帖|發帖/.test(actionLabel)) return "post";
-  if (dialog?.querySelector('[data-testid="tweetText"]')) return "reply";
-  if (!dialog && isStatusUrl(url)) return "reply";
-  return "post";
-}
-
-function getReplyContent(toolbar: HTMLElement, mainWrapper: HTMLElement): string {
-  const boundary = toolbar.closest<HTMLElement>('div[role="dialog"]')
-    ?? toolbar.closest<HTMLElement>("main")
-    ?? mainWrapper;
-  const candidates = [...boundary.querySelectorAll<HTMLElement>('[data-testid="tweetText"]')];
-  if (candidates.length === 0) return "";
-
-  const precedingCandidates = candidates.filter((candidate) =>
-    Boolean(candidate.compareDocumentPosition(toolbar) & Node.DOCUMENT_POSITION_FOLLOWING)
-  );
-  const closestPreceding = precedingCandidates[precedingCandidates.length - 1];
-  return (closestPreceding ?? candidates[0]).textContent?.trim() ?? "";
-}
-
-function mountPromptComposers(url: string, generation: number): void {
-  if (generation !== twitterGeneration || serverPrompts.length === 0) return;
-
-  const toolbars = document.querySelectorAll<HTMLElement>('div[data-testid="toolBar"]');
-  for (const toolbar of toolbars) {
-    if (generation !== twitterGeneration) return;
-    const mainWrapper = findComposerRoot(toolbar);
-    if (!mainWrapper) continue;
-
-    const scene = getComposerScene(toolbar, mainWrapper, url);
-    const prompts = serverPrompts.filter((prompt) => prompt.enabled && prompt.scene === scene);
-    if (prompts.length === 0) continue;
-
-    const replayContent = scene === "reply" ? getReplyContent(toolbar, mainWrapper) : "";
-    const promptData: PromptData[] = prompts.map((prompt) => ({
-      ...prompt,
-      icon: "✨",
-      params: { data: { mainWrapper, replayContent, generation } },
-      handler: generateHandle,
-    }));
-    createPromptContainer(toolbar, PromptLocationEnum.Previous, promptData);
-  }
-}
-
-async function generateHandle(
-  prompt: PromptConfig,
-  params: HandlerParams,
-): Promise<void> {
-  const { mainWrapper, replayContent, generation } = params.data;
-  if (!mainWrapper || generation !== twitterGeneration || !mainWrapper.isConnected) {
-    return;
-  }
-
-  const tweetTextareaWrapper = mainWrapper.querySelector(
-    "div[data-testid=tweetTextarea_0]",
-  ) as HTMLElement;
-
-  if (!tweetTextareaWrapper) {
-    return;
-  }
-
-  const message: AIGenarateRuntimeMessage = {
-    type: RuntimeMessageTypeEnum.AI_GENARATE,
-    data: {
-      messages: [
-        {
-          role: "user",
-          content: prompt.prompt.replace("{replyContent}", replayContent || "").replace("{userContent}", tweetTextareaWrapper.textContent || ""),
-        },
-      ],
-    },
-  };
-
-  const response = await sendRuntimeMessage(message);
-  if (generation !== twitterGeneration || !mainWrapper.isConnected) return;
-  if (!response.is_ok) {
-    log_error("AI generate failed", response.error);
-    return;
-  }
-
-  const generateText = response.data;
-  createDialogContainer(
-    generateText,
-    () => {
-      setInputText(tweetTextareaWrapper, generateText);
-    },
-  );
 }
 
 function cleanupTranslationBinding(tweetWrapper: HTMLElement): void {
@@ -359,9 +224,11 @@ function resetTwitterTranslations(): void {
 function ttTwitterTranslate(generation: number): void {
   if (generation !== twitterGeneration) return;
 
-  const tweetWrapperList = document.querySelectorAll<HTMLElement>(
-    'main[role="main"] article[role="article"] div[lang]:not([data-has-translator="true"]):not([lang^="zh"])',
-  );
+  const version = policyVersion;
+  const target = config.value.basic.targetLang.toLowerCase().split('-')[0];
+  const tweetWrapperList = [...document.querySelectorAll<HTMLElement>(
+    'main[role="main"] article[role="article"] div[lang]:not([data-has-translator="true"])',
+  )].filter(el => !el.lang.toLowerCase().startsWith(target));
   if (tweetWrapperList.length === 0) return;
 
   const tooltip = createTranslateTooltip();
@@ -418,6 +285,8 @@ function ttTwitterTranslate(generation: number): void {
       .then((translatedText) => {
         if (
           generation !== twitterGeneration
+          || version !== policyVersion
+          || !activeAutoTranslate
           || !translatedText
           || !tweetWrapper.isConnected
           || !translationBindings.has(tweetWrapper)

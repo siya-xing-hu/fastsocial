@@ -2,16 +2,23 @@ import { computed, inject, ref } from "vue";
 import type { InjectionKey } from "vue";
 import type {
   AIServiceConfig,
+  AccountInput,
+  AccountHomeTestResult,
+  ManagedAccount,
   AccountProfileView,
   InteractionPrompt,
   Monitor,
   MonitorTestResult,
   ServerSettings,
   ServerSettingsPatch,
+  SocialPost,
   XCookieConfig,
   XCookieInput,
 } from "@fast-social/contracts";
 import { requestLocalService } from "../../common/local-service";
+import { confirmOperation } from '../../components/ui/confirm-operation';
+import { config, TranslateChannelEnum } from '../../common/storage-config';
+import { LocalServiceError } from "../../common/local-service-error";
 import {
   RuntimeMessageTypeEnum,
   sendRuntimeMessage,
@@ -27,6 +34,7 @@ export type TestResultState = {
   summary: string;
   fields?: Array<{ label: string; value: string; mono?: boolean }>;
   content?: { label: string; value: string };
+  posts?: SocialPost[];
 };
 export type ServiceDraft = {
   id: string;
@@ -130,17 +138,19 @@ export function emptyPromptDraft(): PromptDraft {
     scene: "post",
     prompt: "",
     enabled: true,
+    accountIds: [],
   };
 }
 
 export function promptToDraft(prompt: InteractionPrompt): PromptDraft {
-  return { ...prompt };
+  return { ...prompt, accountIds: [...(prompt.accountIds ?? [])] };
 }
 
 export function useServerAdmin() {
   const loading = ref(false);
   const busyAction = ref<string | null>(null);
   const online = ref(false);
+  const serviceIncompatible = ref(false);
   const serviceError = ref("");
   const settingsError = ref("");
   const monitorsError = ref("");
@@ -148,7 +158,6 @@ export function useServerAdmin() {
   const monitors = ref<Monitor[]>([]);
   const notice = ref<AdminNotice | null>(null);
   const testResult = ref<TestResultState | null>(null);
-  const testUsername = ref("");
   const secretDraft = ref({ telegramToken: "" });
 
   const aiOptions = computed<AIOption[]>(() =>
@@ -170,7 +179,9 @@ export function useServerAdmin() {
   );
 
   async function refreshService(): Promise<void> {
+    if (loading.value) return;
     loading.value = true;
+    serviceIncompatible.value = false;
     serviceError.value = "";
     settingsError.value = "";
     monitorsError.value = "";
@@ -179,24 +190,20 @@ export function useServerAdmin() {
         await requestLocalService("/health");
         online.value = true;
       } catch (error) {
-        online.value = false;
+        serviceIncompatible.value = error instanceof LocalServiceError && error.code === "LOCAL_SERVICE_INCOMPATIBLE";
+        online.value = serviceIncompatible.value;
         settings.value = null;
         monitors.value = [];
         serviceError.value = errorMessage(error);
         return;
       }
 
-      const [settingsResult, monitorsResult] = await Promise.allSettled([
-        loadSettings(),
-        loadMonitors(),
-      ]);
-      if (settingsResult.status === "rejected") {
+      try {
+        await loadSettings();
+      } catch (error) {
         settings.value = null;
-        settingsError.value = `服务配置加载失败：${errorMessage(settingsResult.reason)}`;
-      }
-      if (monitorsResult.status === "rejected") {
-        monitors.value = [];
-        monitorsError.value = `监听列表加载失败：${errorMessage(monitorsResult.reason)}`;
+        serviceIncompatible.value = error instanceof LocalServiceError && error.code === "LOCAL_SERVICE_INCOMPATIBLE";
+        settingsError.value = `服务配置加载失败：${errorMessage(error)}`;
       }
     } finally {
       loading.value = false;
@@ -211,7 +218,10 @@ export function useServerAdmin() {
 
   async function refreshXSettings(): Promise<void> {
     const updated = await requestLocalService<ServerSettings>("/api/settings");
-    if (settings.value) settings.value.x = updated.x;
+    if (settings.value) {
+      settings.value.x = updated.x;
+      settings.value.accounts = updated.accounts;
+    }
     else settings.value = updated;
     settingsError.value = "";
   }
@@ -247,7 +257,7 @@ export function useServerAdmin() {
       } catch (error) {
         console.warn("配置已保存，但插件页面同步通知失败", error);
         showNotice(
-          "配置已保存，但页面同步通知失败；刷新 X 页面即可生效",
+          "配置已保存，但页面同步通知失败；刷新 𝕏 页面即可生效",
           "warning",
         );
       }
@@ -347,7 +357,7 @@ export function useServerAdmin() {
     return updateSettings(
       { x: { cookies } },
       `x-cookie:${id}`,
-      draft.id ? "X Cookie 已更新" : "X Cookie 已添加",
+      draft.id ? "𝕏 Cookie 已更新" : "𝕏 Cookie 已添加",
     );
   }
 
@@ -356,7 +366,7 @@ export function useServerAdmin() {
     return updateSettings(
       { x: { cookies: xCookieInputs((items) => items.filter((item) => item.id !== id)) } },
       `x-cookie:${id}`,
-      "X Cookie 已删除",
+      "𝕏 Cookie 已删除",
     );
   }
 
@@ -457,37 +467,37 @@ export function useServerAdmin() {
     return saved;
   }
 
-  async function savePromptDraft(draft: PromptDraft): Promise<boolean> {
-    if (!settings.value) return false;
-    if (!draft.name.trim() || !draft.prompt.trim()) {
-      showNotice("请填写 Prompt 名称和内容", "error");
-      return false;
-    }
-    const prompt: InteractionPrompt = {
-      ...draft,
-      id: draft.id || crypto.randomUUID(),
-      name: draft.name.trim(),
-      prompt: draft.prompt.trim(),
-    };
-    const previousPrompts = settings.value.interactionPrompts.map((item) => ({ ...item }));
-    const prompts = settings.value.interactionPrompts;
-    const index = prompts.findIndex((item) => item.id === prompt.id);
-    if (index >= 0) prompts.splice(index, 1, prompt);
-    else prompts.push(prompt);
-    const saved = await savePrompts();
-    if (!saved && settings.value) settings.value.interactionPrompts = previousPrompts;
-    return saved;
+  async function configurationRequest(path: string, method: 'POST' | 'PUT' | 'DELETE', body?: unknown): Promise<boolean> {
+    busyAction.value = 'configuration';
+    try {
+      await requestLocalService(path, { method, body });
+      const updated = await requestLocalService<ServerSettings>('/api/settings');
+      if (settings.value) {
+        settings.value.accounts = updated.accounts;
+        settings.value.x = updated.x;
+        settings.value.interactionPrompts = updated.interactionPrompts;
+      } else settings.value = updated;
+      try { await sendRuntimeMessage({ type: RuntimeMessageTypeEnum.CONFIG_UPDATE }); } catch { /* Applied on next page refresh. */ }
+      showNotice('已保存');
+      return true;
+    } catch (error) { showError(error); return false; }
+    finally { busyAction.value = null; }
   }
-
+  async function savePromptDraft(draft: PromptDraft): Promise<boolean> {
+    return configurationRequest(draft.id ? `/api/prompts/${draft.id}` : '/api/prompts', draft.id ? 'PUT' : 'POST', {
+      name: draft.name, scene: draft.scene, prompt: draft.prompt, accountIds: draft.accountIds ?? [],
+    });
+  }
   async function removePrompt(id: string): Promise<boolean> {
-    if (!settings.value) return false;
-    const previousPrompts = settings.value.interactionPrompts.map((item) => ({ ...item }));
-    settings.value.interactionPrompts = settings.value.interactionPrompts.filter(
-      (prompt) => prompt.id !== id,
-    );
-    const saved = await savePrompts();
-    if (!saved && settings.value) settings.value.interactionPrompts = previousPrompts;
-    return saved;
+    return configurationRequest(`/api/prompts/${id}`, 'DELETE');
+  }
+  async function saveAccount(input: AccountInput, id?: string): Promise<boolean> {
+    return configurationRequest(id ? `/api/accounts/${id}` : '/api/accounts', id ? 'PUT' : 'POST', input);
+  }
+  async function removeAccount(id: string): Promise<boolean> { return configurationRequest(`/api/accounts/${id}`, 'DELETE'); }
+  async function setAccountAutoTranslate(id: string, enabled: boolean): Promise<boolean> {
+    if (enabled && config.value.basic.translateProvider === TranslateChannelEnum.AI && !await confirmOperation({title: '确认启用 AI 自动翻译', message: '启用后，将自动读取该账号页面中的 Post 并调用 AI 翻译，持续消耗 AI 用量。是否继续？'})) return false;
+    return configurationRequest(`/api/accounts/${id}/translation`, 'PUT', { enabled });
   }
 
   async function saveMonitorDraft(input: MonitorDraft): Promise<boolean> {
@@ -495,6 +505,7 @@ export function useServerAdmin() {
       showNotice("请填写监控名称、用户名和判断 Prompt", "error");
       return false;
     }
+    if (input.enabled && !await confirmOperation({title: '确认保存并启用监听', message: `「${input.name}」将按计划抓取 @${input.username.replace(/^@/, '')} 的 Post，并调用 AI 判断。是否继续？`})) return false;
     busyAction.value = input.id ? `monitor:${input.id}` : "monitor:new";
     try {
       const savedMonitor = await requestLocalService<Monitor>(
@@ -525,6 +536,7 @@ export function useServerAdmin() {
   }
 
   async function toggleMonitor(monitor: Monitor, enabled: boolean): Promise<boolean> {
+    if (enabled && !await confirmOperation({title: '确认启用监听', message: `「${monitor.name}」将按计划抓取 @${monitor.username} 的 Post，并调用 AI 判断。是否继续？`})) return false;
     busyAction.value = `monitor:${monitor.id}`;
     try {
       const updated = await requestLocalService<Monitor>(`/api/monitors/${monitor.id}`, {
@@ -558,6 +570,7 @@ export function useServerAdmin() {
   }
 
   async function runMonitor(monitor: Monitor): Promise<void> {
+    if (busyAction.value !== null || !await confirmOperation({title: '确认批量测试', message: `抓取 @${monitor.username} 的近期 Post，并调用 AI 测试「${monitor.name}」的命中情况。是否继续？`})) return;
     busyAction.value = `run:${monitor.id}`;
     try {
       const result = await requestLocalService<MonitorTestResult>(
@@ -571,7 +584,7 @@ export function useServerAdmin() {
         summary: `已分析最近 ${result.posts.length} 条 Post：${result.decisions.filter(item => item.status === 'match').length} 条命中，${result.decisions.filter(item => item.status === 'uncertain').length} 条不确定。测试不发送通知，不修改正式画像和监听进度。`,
         fields: [
           { label: "监听规则", value: monitor.name },
-          { label: "X 用户", value: `@${monitor.username}` },
+          { label: "𝕏 用户", value: `@${monitor.username}` },
           { label: "画像版本", value: result.profileVersion ? `v${result.profileVersion}` : '首次学习预览' },
           { label: "结果来源", value: result.cached ? '相同输入的缓存结果' : '本次批量分析' },
         ],
@@ -587,7 +600,7 @@ export function useServerAdmin() {
     } catch (error) {
       showTestError("monitor", "监听测试结果", error, [
         { label: "监听规则", value: monitor.name },
-        { label: "X 用户", value: `@${monitor.username}` },
+        { label: "𝕏 用户", value: `@${monitor.username}` },
       ]);
     } finally {
       busyAction.value = null;
@@ -610,52 +623,42 @@ export function useServerAdmin() {
     finally { busyAction.value = null; }
   }
 
-  async function testXCookie(cookie: XCookieConfig): Promise<void> {
-    const username = testUsername.value.trim().replace(/^@/, "");
-    if (!username) {
-      showTestError("x", "X 测试结果", "请先填写测试用户名", [
-        { label: "Cookie 配置", value: cookie.name },
-      ]);
-      return;
-    }
-    busyAction.value = `test:x:${cookie.id}`;
+  async function testAccountHome(account: ManagedAccount): Promise<void> {
+    if (busyAction.value !== null) return;
+    if (!await confirmOperation({title: '确认抓取首页', message: `使用「${account.name} · @${account.username}」请求 X 首页时间线，抓取最新一批 Post。是否继续？`})) return;
+    busyAction.value = `test:account:${account.id}`;
+    const fields = [
+      { label: "测试账号", value: account.username ? `${account.name} · @${account.username}` : account.name },
+      { label: "读取范围", value: "账号首页时间线" },
+    ];
     try {
-      const result = await requestLocalService<{
-        username: string;
-        posts: Array<{ text: string }>;
-      }>(
-        "/api/test/x",
-        { method: "POST", body: { username, cookieId: cookie.id } },
+      const result = await requestLocalService<AccountHomeTestResult>(
+        `/api/accounts/${encodeURIComponent(account.id)}/test`,
+        { method: "POST" },
       );
       showTestResult({
         kind: "x",
         status: "success",
-        title: "X 测试结果",
+        title: "账号首页测试",
         summary: result.posts.length > 0
-          ? "Cookie 验证成功，并成功读取到 Post。"
-          : "Cookie 验证成功，但该用户暂时没有可读取的 Post。",
+          ? "连接成功，已读取该账号首页的 Post。"
+          : "连接成功，首页暂时没有可读取的 Post。",
         fields: [
-          { label: "Cookie 配置", value: cookie.name },
-          { label: "X 用户", value: `@${result.username || username}` },
+          ...fields,
           { label: "读取数量", value: `${result.posts.length} 条` },
         ],
-        ...(result.posts[0]
-          ? { content: { label: "最新 Post", value: result.posts[0].text } }
-          : {}),
+        posts: result.posts,
       });
-      await refreshXSettings().catch(() => undefined);
     } catch (error) {
-      showTestError("x", "X 测试结果", error, [
-        { label: "Cookie 配置", value: cookie.name },
-        { label: "X 用户", value: `@${username}` },
-      ]);
-      await refreshXSettings().catch(() => undefined);
+      showTestError("x", "账号首页测试", error, fields);
     } finally {
+      await refreshXSettings().catch(() => undefined);
       busyAction.value = null;
     }
   }
 
   async function testAI(): Promise<void> {
+    if (busyAction.value !== null) return;
     const provider = settings.value?.ai.defaultProvider ?? "";
     const separator = provider.indexOf(":");
     const serviceId = separator >= 0 ? provider.slice(0, separator) : "";
@@ -665,6 +668,7 @@ export function useServerAdmin() {
       showTestError("ai", "AI 测试结果", "请先选择默认服务和模型");
       return;
     }
+    if (!await confirmOperation({title: '确认测试 AI', message: `调用「${service.name}」的 ${modelName} 模型发送一条测试请求，将消耗 AI 用量。是否继续？`})) return;
     const fields = [
       { label: "AI 服务", value: service.name },
       {
@@ -762,6 +766,7 @@ export function useServerAdmin() {
     loading,
     busyAction,
     online,
+    serviceIncompatible,
     serviceError,
     settingsError,
     monitorsError,
@@ -769,7 +774,6 @@ export function useServerAdmin() {
     monitors,
     notice,
     testResult,
-    testUsername,
     secretDraft,
     aiOptions,
     configuredAIServiceCount,
@@ -783,6 +787,9 @@ export function useServerAdmin() {
     savePrompts,
     saveServiceDraft,
     removeService,
+    saveAccount,
+    removeAccount,
+    setAccountAutoTranslate,
     savePromptDraft,
     removePrompt,
     saveMonitorDraft,
@@ -791,7 +798,7 @@ export function useServerAdmin() {
     runMonitor,
     getMonitorProfile,
     saveMonitorProfile,
-    testXCookie,
+    testAccountHome,
     testAI,
     testTelegram,
     closeTestResult,
@@ -833,6 +840,7 @@ function mergeSettingsPatch(
   if (!current) return updated;
 
   return {
+    accounts: updated.accounts,
     ai: patch.ai === undefined ? current.ai : updated.ai,
     interactionPrompts:
       patch.interactionPrompts === undefined

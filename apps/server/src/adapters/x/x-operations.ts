@@ -1,6 +1,12 @@
 // Browser-web operations, not the X developer API. Verified against X's public
 // main.60bedca26c9a9faaa.js bundle on 2026-09-23. Keep IDs and features in sync.
 export const X_OPERATIONS = {
+  homeTimeline: {
+    id: process.env.X_HOME_TIMELINE_OPERATION_ID ?? "-M5P8LkjBRfeMF2MRJfbqA",
+    name: "HomeTimeline",
+    method: "POST",
+    fieldToggles: {},
+  },
   userByScreenName: {
     id: process.env.X_USER_BY_SCREEN_NAME_OPERATION_ID ?? "KybxDj9RrADIITXlGG8kpw",
     name: "UserByScreenName",

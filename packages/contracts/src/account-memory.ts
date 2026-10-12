@@ -6,6 +6,7 @@ export interface SocialAccount {
   name: string;
   bio: string;
   fetchedAt: string;
+  blueVerified?: boolean;
 }
 export interface TimelinePage { posts: SocialPost[]; nextCursor: string | null }
 export type MemorySection = 'background' | 'topics' | 'language' | 'recent';

@@ -8,10 +8,10 @@ export class XAdapter implements SocialAdapter {
     this.client = client;
   }
 
-  fetchAccount(username: string) { return this.client.fetchAccount(username); }
+  fetchAccount(username: string, cookieId?: string) { return this.client.fetchAccount(username, cookieId); }
 
-  fetchTimelinePage(account: import("@fast-social/contracts").SocialAccount, cursor?: string, surface?: "posts" | "replies") {
-    return this.client.fetchTimelinePage(account, cursor, surface);
+  fetchTimelinePage(account: import("@fast-social/contracts").SocialAccount, cursor?: string, surface?: "posts" | "replies", cookieId?: string) {
+    return this.client.fetchTimelinePage(account, cursor, surface, cookieId);
   }
 
   fetchRecentPosts(username: string, cookieId?: string) {

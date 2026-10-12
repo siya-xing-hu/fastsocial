@@ -1,6 +1,8 @@
 import type { AccountMemory, AIChatMessage, Monitor, PostDecision, SocialAccount, SocialPost } from '@fast-social/contracts';
 import { createHash } from 'node:crypto';
 import type { AIGateway } from './ai-gateway.ts';
+import { AIOutputTruncatedError } from './openai-compatible-client.ts';
+import { withTrace } from '../observability/trace.ts';
 
 export const MEMORY_LIMIT = 250;
 export const INPUT_BUDGET = 8000;
@@ -71,8 +73,14 @@ export class BatchMatcher {
       const retryHint: AIChatMessage[] = lastError instanceof BatchValidationError
         ? [{ role: 'user', content: `上次返回未通过校验：${lastError.message}。请修正并重新返回完整 JSON；仅使用已提供的证据，画像最多 250 字。` }]
         : [];
-      try { return parseBatchResult(await this.gateway.complete(undefined, [...messages, ...retryHint], 6000), input); }
-      catch (error) { lastError = error; }
+      try { return parseBatchResult(await withTrace({ aiOperation: input.rules.length ? 'AI 判断并更新画像' : 'AI 更新画像', postCount: input.posts.length },
+        () => this.gateway.complete(undefined, [...messages, ...retryHint], 6000)), input); }
+      catch (error) {
+        // The client already retried truncation with a larger output budget.
+        if (error instanceof AIOutputTruncatedError)
+          throw new Error(`${error.message}；监听进度保持不变`, { cause: error });
+        lastError = error;
+      }
     }
     throw lastError;
 

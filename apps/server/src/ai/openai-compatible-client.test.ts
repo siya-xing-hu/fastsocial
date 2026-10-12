@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { OpenAICompatibleClient } from "./openai-compatible-client.ts";
+import { AIOutputTruncatedError, OpenAICompatibleClient } from "./openai-compatible-client.ts";
 
 const service = {
   id: "ai",
@@ -146,5 +146,67 @@ test('Kimi 2.6 uses its required temperature without changing other models', asy
       return new Response(JSON.stringify({ choices: [{ message: { content: 'OK' } }] }));
     });
     assert.equal(await client.complete({ ...input, model: { name: model } }), 'OK');
+  }
+});
+
+test('truncated completions retry once with a larger budget and discard the partial answer', async () => {
+  for (const apiFormat of ['openai', 'anthropic'] as const) {
+    const bodies: any[] = [];
+    const client = new OpenAICompatibleClient(async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      if (bodies.length === 1) return Response.json(apiFormat === 'openai'
+        ? { choices: [{ finish_reason: 'length', message: { content: 'partial' } }], usage: { completion_tokens: 6000 } }
+        : { stop_reason: 'max_tokens', content: [{ text: 'partial' }], usage: { output_tokens: 6000 } });
+      return Response.json(apiFormat === 'openai'
+        ? { choices: [{ finish_reason: 'stop', message: { content: 'complete' } }] }
+        : { stop_reason: 'end_turn', content: [{ text: 'complete' }] });
+    });
+    assert.equal(await client.complete({ ...input, service: { ...service, apiFormat }, maxOutputTokens: 6000 }), 'complete');
+    assert.deepEqual(bodies.map(body => body.max_tokens), [6000, 12000]);
+    assert.deepEqual(bodies[0].messages, bodies[1].messages);
+  }
+});
+
+test('truncation retry is bounded and does not report monitor progress in generic AI errors', async () => {
+  let calls = 0;
+  const client = new OpenAICompatibleClient(async () => {
+    calls++;
+    return Response.json({ choices: [{ finish_reason: 'length', message: { content: 'partial' } }] });
+  });
+  await assert.rejects(client.complete(input), (error: unknown) => {
+    assert.ok(error instanceof AIOutputTruncatedError);
+    assert.doesNotMatch(error.message, /监听|偏移量/);
+    return true;
+  });
+  assert.equal(calls, 2);
+  calls = 0;
+  await assert.rejects(client.complete({ ...input, maxOutputTokens: 32768 }), AIOutputTruncatedError);
+  assert.equal(calls, 1);
+});
+
+test('provider-default truncation uses reported token usage when increasing the output budget', async () => {
+  let calls = 0;
+  const client = new OpenAICompatibleClient(async (_url, init) => {
+    calls++;
+    if (calls === 1) return Response.json({ choices: [{ finish_reason: 'length' }], usage: { completion_tokens: 8192 } });
+    assert.equal(JSON.parse(String(init?.body)).max_tokens, 16384);
+    return Response.json({ choices: [{ message: { content: 'OK' } }] });
+  });
+  assert.equal(await client.complete(input), 'OK');
+});
+
+test('stream truncation is surfaced without replaying partial text', async () => {
+  for (const apiFormat of ['openai', 'anthropic'] as const) {
+    let calls = 0;
+    const client = new OpenAICompatibleClient(async () => {
+      calls++;
+      return new Response(apiFormat === 'openai'
+        ? 'data: {"choices":[{"delta":{"content":"partial"}}]}\n\ndata: {"choices":[{"finish_reason":"length","delta":{}}]}\n'
+        : 'data: {"type":"content_block_delta","delta":{"text":"partial"}}\n\ndata: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}\n');
+    });
+    let text = '';
+    await assert.rejects(client.stream({ ...input, service: { ...service, apiFormat } }, chunk => { text += chunk; }), AIOutputTruncatedError);
+    assert.equal(text, 'partial');
+    assert.equal(calls, 1);
   }
 });

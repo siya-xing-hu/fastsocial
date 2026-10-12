@@ -2,11 +2,12 @@ export const OPTION_NAVIGATION_STORAGE_KEY = "fast-social.option-navigation";
 export const DEFAULT_OPTION_HASH = "#basic" as const;
 
 export const SERVER_SECTIONS = [
-  "overview",
+  "accounts",
+  "following",
   "connections",
   "ai",
-  "monitors",
-  "prompts",
+  "workflows",
+  "skills",
 ] as const;
 
 export type ServerSection = typeof SERVER_SECTIONS[number];
@@ -28,6 +29,8 @@ function defaultStorage(): OptionNavigationStorage | undefined {
 }
 
 export function normalizeOptionNavigationHash(hash: string): OptionNavigationHash {
+  const aliases: Record<string, string> = { '#server/overview': '#server/accounts', '#server/monitors': '#server/workflows', '#server/outreach': '#server/workflows', '#accounts': '#server/accounts', '#prompts': '#server/skills', '#server/prompts': '#server/skills', '#ai': '#server/ai', '#connections': '#server/connections', '#workflows': '#server/workflows' };
+  hash = aliases[hash] ?? hash;
   if (hash === DEFAULT_OPTION_HASH) {
     return hash;
   }
@@ -48,7 +51,7 @@ export function parseOptionNavigation(hash: string): OptionNavigation {
     return {
       hash: normalizedHash,
       area: "basic",
-      serverSection: "overview",
+      serverSection: "accounts",
     };
   }
 

@@ -39,6 +39,7 @@ export interface AISettings {
 }
 
 export interface ServerSettings {
+  accounts: import('./configuration.ts').ManagedAccount[];
   ai: AISettings;
   interactionPrompts: InteractionPrompt[];
   x: XSettings;

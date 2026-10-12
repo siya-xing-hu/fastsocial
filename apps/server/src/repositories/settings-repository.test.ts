@@ -17,22 +17,23 @@ test("settings repository exposes default interaction prompts in priority order"
       "builtin-reply-question-en",
       "builtin-reply-agree-en",
       "builtin-reply-disagree-en",
+      "builtin-translation",
     ],
   );
-  assert.equal(repository.getInteractionPrompts().length, 7);
+  assert.equal(repository.getInteractionPrompts().length, 8);
 
   repository.update({ interactionPrompts: [] });
   assert.deepEqual(repository.getInteractionPrompts(), []);
   database.close();
 });
 
-test("settings repository seeds a legacy empty prompt list once", () => {
+test("settings repository preserves an explicitly empty legacy prompt list", () => {
   const database = openDatabase(":memory:");
   database.prepare("INSERT INTO settings (key, value) VALUES (?, ?)")
     .run("interaction_prompts", "[]");
 
   const firstRepository = new SettingsRepository(database);
-  assert.equal(firstRepository.getInteractionPrompts().length, 7);
+  assert.equal(firstRepository.getInteractionPrompts().length, 0);
 
   firstRepository.update({ interactionPrompts: [] });
   const restartedRepository = new SettingsRepository(database);

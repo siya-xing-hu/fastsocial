@@ -17,8 +17,17 @@ export class AccountRepository {
       .run(profile.account.id, profile.account.username, JSON.stringify(profile));
   }
   savePosts(accountId: string, posts: SocialPost[]): void {
+    this.transaction(() => this.writePosts(accountId, posts));
+  }
+  saveLearning(profile: AccountProfile, posts: SocialPost[]): void {
+    this.transaction(() => {
+      this.writePosts(profile.account.id, posts);
+      this.saveProfile(profile);
+    });
+  }
+  private writePosts(accountId: string, posts: SocialPost[]): void {
     const insert = this.database.prepare('INSERT INTO account_posts (account_id, post_id, created_at, value) VALUES (?, ?, ?, ?) ON CONFLICT(account_id, post_id) DO UPDATE SET value=excluded.value');
-    this.transaction(() => { for (const post of posts) insert.run(accountId, post.id, post.createdAt, JSON.stringify(post)); });
+    for (const post of posts) insert.run(accountId, post.id, post.createdAt, JSON.stringify(post));
   }
   posts(accountId: string, ids?: string[]): SocialPost[] {
     if (ids && !ids.length) return [];

@@ -11,6 +11,8 @@ import { initEventListeners } from "./components/events/event-listeners";
 import "./tailwind.css";
 import "./assets/chat.css";
 import { handlerCommonUrl } from "./components/translate";
+import { installAssistantContext } from "./assistant/x-context";
+import { installAssistantPanel } from "./assistant/panel-host";
 
 const X_INIT_DEBOUNCE_MS = 150;
 
@@ -102,6 +104,8 @@ async function init() {
   });
 
   if (isXUrl(window.location.href)) {
+    installAssistantContext();
+    installAssistantPanel();
     installXNavigationListener();
     scheduleXInit(window.location.href);
   }

@@ -1,3 +1,4 @@
+import { renderPrompt } from '@fast-social/contracts';
 import {
   config,
   DEFAULT_TRANSLATE_PROMPT,
@@ -252,9 +253,7 @@ export function buildTranslationPrompt(
     ? "讲解不常用词汇和特殊用法，以供用户理解。"
     : "请直接输出翻译结果，不要过度解读。";
 
-  return `${template.trim()}\n\n${instructions}`
-    .replace(/\{targetLang\}/g, () => targetLang)
-    .replace(/\{userContent\}/g, () => text);
+  return renderPrompt(`${template.trim()}\n\n${instructions}`, { input: text, targetLanguage: targetLang });
 }
 
 export async function translate(channel: TranslateChannelEnum, text: string, is_advanced: boolean, locale: string): Promise<string> {

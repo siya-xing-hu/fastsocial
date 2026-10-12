@@ -18,3 +18,33 @@ test("sends configured Telegram message", async () => {
   assert.deepEqual(request?.body, { chat_id: "42", text: "matched", disable_web_page_preview: false });
   database.close();
 });
+
+test("identifies Telegram timeouts without exposing the bot token or retrying a send", async () => {
+  const database = openDatabase(":memory:");
+  try {
+    const settings = new SettingsRepository(database);
+    settings.update({ telegram: { botToken: "private-token", chatId: "42" } });
+    const errors = [
+      new DOMException("request timed out", "TimeoutError"),
+      new TypeError("fetch failed", { cause: Object.assign(new Error("connect timeout"), { code: "UND_ERR_CONNECT_TIMEOUT" }) }),
+      new TypeError("fetch failed", { cause: new AggregateError([Object.assign(new Error("connect timeout"), { code: "ETIMEDOUT" })]) }),
+      new Error("https://api.telegram.org/botprivate-token/sendMessage failed"),
+    ];
+    for (const [index, error] of errors.entries()) {
+      let attempts = 0;
+      const notifier = new TelegramNotifier(settings, async () => {
+        attempts += 1;
+        throw error;
+      });
+      await assert.rejects(notifier.send("matched"), (failure: Error) => {
+        assert.match(failure.message, index < 3 ? /Telegram 连接超时/ : /Telegram 连接失败/);
+        assert.match(failure.message, /api\.telegram\.org/);
+        assert.doesNotMatch(failure.message, /private-token/);
+        return true;
+      });
+      assert.equal(attempts, 1);
+    }
+  } finally {
+    database.close();
+  }
+});

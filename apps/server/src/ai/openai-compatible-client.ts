@@ -1,5 +1,6 @@
 import type { AIChatMessage, AIModelConfig, AIServiceConfig } from "@fast-social/contracts";
 import type { FetchLike } from "../adapters/x/x-client.ts";
+import { trace, withTrace } from '../observability/trace.ts';
 
 export interface CompletionInput {
   service: AIServiceConfig;
@@ -9,6 +10,14 @@ export interface CompletionInput {
   timeoutMs?: number;
 }
 
+export class AIOutputTruncatedError extends Error {
+  constructor() {
+    super("AI 输出被截断（达到输出长度上限），未采用不完整结果");
+  }
+}
+
+const MAX_TRUNCATION_RETRY_TOKENS = 32_768;
+
 export class OpenAICompatibleClient {
   private readonly fetchImpl: FetchLike;
 
@@ -17,25 +26,41 @@ export class OpenAICompatibleClient {
   }
 
   async complete(input: CompletionInput): Promise<string> {
-    const response = await this.request(input, false);
-    const payload = (await response.json()) as {
-      choices?: Array<{ finish_reason?: string; message?: { content?: string } }>;
-      content?: Array<{ text?: string }>;
-      stop_reason?: string;
-    };
-    if (payload.stop_reason === 'max_tokens' || payload.choices?.[0]?.finish_reason === 'length') {
-      throw new Error('AI 输出被截断，监听偏移量保持不变');
+    const deadline = Date.now() + (input.timeoutMs ?? 60_000);
+    let current = input;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await this.request({ ...current, timeoutMs: Math.max(1, deadline - Date.now()) }, false);
+      const payload = (await response.json()) as {
+        choices?: Array<{ finish_reason?: string; message?: { content?: string } }>;
+        content?: Array<{ text?: string }>;
+        stop_reason?: string;
+        usage?: { completion_tokens?: number; output_tokens?: number };
+      };
+      if (payload.stop_reason === "max_tokens" || payload.choices?.[0]?.finish_reason === "length") {
+        const reported = payload.usage?.completion_tokens ?? payload.usage?.output_tokens;
+        const used = typeof reported === "number" && Number.isFinite(reported) && reported > 0 ? reported : 0;
+        const previous = Math.max(current.maxOutputTokens ?? (input.service.apiFormat === "anthropic" ? 1024 : 4096), used);
+        const next = Math.min(MAX_TRUNCATION_RETRY_TOKENS, Math.max(4096, Math.ceil(previous * 2)));
+        // Retry the whole response once; never concatenate or accept partial structured output.
+        // Share the original time budget so callers do not time out while a hidden retry continues.
+        if (attempt === 0 && next > previous && Date.now() < deadline) {
+          trace('ai.retry', 'AI 输出截断，增加输出预算后重试整次请求', { model: input.model.name, attempt: attempt + 1, previous, next });
+          current = { ...input, maxOutputTokens: next };
+          continue;
+        }
+        throw new AIOutputTruncatedError();
+      }
+      const content = input.service.apiFormat === "anthropic"
+        ? payload.content
+          ?.map((block) => block.text)
+          .filter((text): text is string => typeof text === "string")
+          .join("")
+        : payload.choices?.[0]?.message?.content;
+      if (typeof content !== "string" || !content) throw new Error("AI 服务返回了空内容");
+      trace('ai.complete', 'AI 返回完整内容', { serviceId: input.service.id, model: input.model.name, content, usage: payload.usage });
+      return content;
     }
-    const content = input.service.apiFormat === "anthropic"
-      ? payload.content
-        ?.map((block) => block.text)
-        .filter((text): text is string => typeof text === "string")
-        .join("")
-      : payload.choices?.[0]?.message?.content;
-    if (typeof content !== "string" || !content) {
-      throw new Error("AI 服务返回了空内容");
-    }
-    return content;
+    throw new AIOutputTruncatedError();
   }
 
   async stream(
@@ -58,8 +83,8 @@ export class OpenAICompatibleClient {
         if (!data || data === "[DONE]") continue;
         let payload: {
           type?: string;
-          choices?: Array<{ delta?: { content?: string } }>;
-          delta?: { text?: string };
+          choices?: Array<{ finish_reason?: string; delta?: { content?: string } }>;
+          delta?: { text?: string; stop_reason?: string };
           error?: { message?: string };
         };
         try {
@@ -69,6 +94,10 @@ export class OpenAICompatibleClient {
           continue;
         }
         if (payload.error) throw new Error(payload.error.message || "AI 流返回错误");
+        if (payload.choices?.[0]?.finish_reason === "length" || payload.delta?.stop_reason === "max_tokens") {
+          await reader.cancel();
+          throw new AIOutputTruncatedError();
+        }
         const chunk = apiFormat === "anthropic"
           ? payload.type === "content_block_delta" ? payload.delta?.text : undefined
           : payload.choices?.[0]?.delta?.content;
@@ -95,12 +124,12 @@ export class OpenAICompatibleClient {
 
     let response: Response;
     try {
-      response = await this.fetchImpl(input.service.endpoint, {
+      response = await withTrace({ serviceId: input.service.id, model: input.model.name, stream }, () => this.fetchImpl(input.service.endpoint, {
         signal: AbortSignal.timeout(input.timeoutMs ?? 60_000),
         method: "POST",
         headers,
         body: JSON.stringify(body),
-      });
+      }));
     } catch (error) {
       throw connectionError(input.service.endpoint, error);
     }

@@ -3,6 +3,7 @@ import test from 'node:test';
 import { BatchMatcher, batchMessages, estimateTokens, inputSize, INPUT_BUDGET, parseBatchResult, type BatchInput } from './batch-matcher.ts';
 import type { AIGateway } from './ai-gateway.ts';
 import type { AIChatMessage } from '@fast-social/contracts';
+import { AIOutputTruncatedError } from './openai-compatible-client.ts';
 const input: BatchInput = { account: { id: 'u', username: 'example', name: 'E', bio: '', fetchedAt: '' }, memory: {}, context: [], includeBio: true,
   posts: [{ id: '1', platform: 'x', author: 'example', text: 'We are changing Codex limits.', createdAt: '2026-09-23T10:00:00Z', url: '', type: 'post' }, { id: '2', platform: 'x', author: 'example', text: 'The reset arrives next Tuesday. hhh', createdAt: '2026-09-23T10:05:00Z', url: '', type: 'post' }], rules: [{ id: 'r', prompt: 'Codex reset', postIds: ['1', '2'] }] };
 const response = { decisions: [{ postId: '1', ruleId: 'r', status: 'no_match', reason: '未给时间', evidenceIds: [] }, { postId: '2', ruleId: 'r', status: 'match', reason: '前帖说明 Codex，后帖给重置时间', evidenceIds: ['1', '2'], eventTime: 'next Tuesday，时区未知' }], memory: null };
@@ -75,4 +76,11 @@ test('oversized input fails without paying for an AI call', async () => {
   const matcher = new BatchMatcher({ async complete() { calls++; return '{}'; } } as unknown as AIGateway);
   await assert.rejects(matcher.analyze({ ...input, posts: [{ ...input.posts[0]!, text: '大'.repeat(10000) }] }), /预算/);
   assert.equal(calls, 0);
+});
+
+test('batch matching does not repeat an already exhausted truncation retry', async () => {
+  let calls = 0;
+  const matcher = new BatchMatcher({ async complete() { calls++; throw new AIOutputTruncatedError(); } } as unknown as AIGateway);
+  await assert.rejects(matcher.analyze(input), /监听进度保持不变/);
+  assert.equal(calls, 1);
 });

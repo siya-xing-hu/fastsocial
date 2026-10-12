@@ -1,195 +1,225 @@
 <template>
-  <section class="space-y-6" aria-labelledby="basic-settings-title">
-    <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+  <section
+    class="settings-page space-y-4"
+    aria-labelledby="basic-settings-title"
+  >
+    <header
+      class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+    >
       <div>
-        <h2 id="basic-settings-title" class="text-2xl font-semibold tracking-tight text-slate-900">
-          插件基础设置
+        <h2
+          id="basic-settings-title"
+          class="text-2xl font-semibold tracking-tight text-slate-900"
+        >
+          插件设置
         </h2>
-        <p class="mt-1.5 max-w-2xl text-sm leading-6 text-slate-600">
-          翻译配置保存在浏览器插件中。即使本地服务未启动，Google 和 DeepL 仍可正常使用。
-        </p>
       </div>
 
-      <div
-        class="inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
-        :class="saveIndicatorClasses"
-        role="status"
-        aria-live="polite"
-      >
-        <span class="h-1.5 w-1.5 rounded-full" :class="saveIndicatorDotClasses" />
-        {{ saveIndicatorText }}
+      <div class="flex shrink-0 items-center gap-3">
+        <div
+          class="inline-flex rounded-lg bg-slate-100 p-1"
+          role="group"
+          aria-label="配置编辑方式"
+        >
+          <button data-ui="choice" :title="mode === 'form' ? '表单编辑' : 'JSON 编辑'"
+            v-for="mode in (['form', 'json'] as const)"
+            :key="mode"
+            type="button"
+            class="rounded-md px-3 py-1.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-wait"
+            :class="
+              editMode === mode
+                ? 'bg-white text-blue-700 shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
+            "
+            :aria-pressed="editMode === mode"
+            :disabled="jsonSaving"
+            @click="switchMode(mode)"
+          >
+            {{ mode === "form" ? "Form" : "JSON" }}
+          </button>
+        </div>
+        <div
+          class="inline-flex h-8 w-3 shrink-0 items-center justify-center"
+          :title="saveIndicatorText"
+          role="status"
+          aria-live="polite"
+        >
+          <span
+            class="h-1.5 w-1.5 rounded-full transition-colors"
+            :class="saveIndicatorDotClasses"
+            aria-hidden="true"
+          />
+          <span class="sr-only">{{ saveIndicatorText }}</span>
+        </div>
       </div>
     </header>
 
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div class="border-b border-slate-100 px-6 py-5">
-        <h3 class="text-base font-semibold text-slate-900">翻译偏好</h3>
-        <p class="mt-1 text-sm text-slate-500">选择日常使用的翻译方式和默认目标语言。</p>
-      </div>
-
-      <div class="grid gap-6 p-6 md:grid-cols-2">
-        <label class="block">
-          <span class="field-label">翻译服务</span>
-          <select
-            v-model="config.basic.translateProvider"
-            class="field-input"
-            @change="saveConfigChange"
-          >
-            <option :value="TranslateChannelEnum.AUTO">自动（Google 优先）</option>
-            <option :value="TranslateChannelEnum.GOOGLE">Google</option>
-            <option :value="TranslateChannelEnum.DEEPL">DeepL</option>
-            <option
-              :value="TranslateChannelEnum.AI"
-              :disabled="!aiTranslationAvailable"
+    <template v-if="editMode === 'form'">
+      <article class="panel">
+        <div class="panel-heading">
+          翻译偏好 <span class="muted">浏览器保存</span>
+        </div>
+        <div class="panel-body">
+          <div class="flex items-center justify-between gap-4 mb-5"
+            ><span
+              ><strong class="text-sm">自动翻译 · 本地默认</strong
+              ><span class="muted block mt-1"
+                >服务离线时，所有账号统一使用此开关。</span
+              ></span
+            ><ToggleSwitch
+              :model-value="config.basic.autoTranslate"
+              label="离线时默认自动翻译"
+              @update:model-value="changeAutoTranslate"
+          /></div>
+          <div class="translation-fields">
+            <label class="field"
+              >翻译渠道<select
+                :value="config.basic.translateProvider"
+                class="input"
+                @change="changeTranslateProvider"
+              >
+                <option :value="TranslateChannelEnum.AUTO">
+                  自动 · Google 优先
+                </option>
+                <option :value="TranslateChannelEnum.GOOGLE">Google</option>
+                <option :value="TranslateChannelEnum.DEEPL">DeepL</option>
+                <option
+                  :value="TranslateChannelEnum.AI"
+                  :disabled="!aiTranslationAvailable"
+                >
+                  {{ aiOptionLabel }}
+                </option>
+              </select></label
             >
-              {{ aiOptionLabel }}
-            </option>
-          </select>
-          <span class="field-help">
-            {{ providerDescription }}
-          </span>
-          <span
-            class="mt-2 flex items-start gap-1.5 text-xs leading-5"
-            :class="aiTranslationAvailable ? 'text-emerald-700' : 'text-amber-700'"
-          >
-            <span
-              class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
-              :class="aiTranslationAvailable ? 'bg-emerald-500' : 'bg-amber-400'"
-            />
-            <span>
-              {{ aiAvailabilityText }}
-              <a
-                v-if="!aiTranslationAvailable"
-                href="#server/ai"
-                class="ml-1 font-semibold underline decoration-current/30 underline-offset-2 hover:decoration-current"
-              >配置 AI 服务</a>
-            </span>
-          </span>
-        </label>
-
-        <label class="block">
-          <span class="field-label">目标语言</span>
-          <select
-            v-model="config.basic.targetLang"
-            class="field-input"
-            @change="saveConfigChange"
-          >
-            <option value="zh-CN">中文</option>
-            <option value="en">英文</option>
-          </select>
-          <span class="field-help">翻译结果默认输出的语言。</span>
-        </label>
-
-        <label class="md:col-span-2 flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3.5 transition hover:border-slate-300">
-          <span>
-            <span class="block text-sm font-medium text-slate-800">自动翻译 X 帖子</span>
-            <span class="mt-1 block text-xs leading-5 text-slate-500">浏览 X 时自动展示译文，无需逐条点击翻译。</span>
-          </span>
-          <input
-            v-model="config.basic.autoTranslate"
-            type="checkbox"
-            class="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-            @change="saveConfigChange"
-          />
-        </label>
-      </div>
-    </div>
-
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div class="flex flex-col gap-2 border-b border-slate-100 px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h3 class="text-base font-semibold text-slate-900">DeepL 备用翻译</h3>
-          <p class="mt-1 text-sm text-slate-500">可直接使用 DeepL，也可在自动模式下作为 Google 的备用服务。</p>
-        </div>
-        <span class="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">仅保存在插件中</span>
-      </div>
-
-      <div class="grid gap-6 p-6 md:grid-cols-2">
-        <label class="block">
-          <span class="field-label">API 类型</span>
-          <select
-            v-model="config.translationService.deeplApiEndpoint"
-            class="field-input"
-            @change="saveConfigChange"
-          >
-            <option value="https://api.deepl.com/v2/translate">Developer / Growth</option>
-            <option value="https://api-free.deepl.com/v2/translate">API Free</option>
-          </select>
-          <span class="field-help">请与 DeepL 账户中的订阅类型保持一致。</span>
-        </label>
-
-        <label class="block">
-          <span class="field-label">API Key</span>
-          <input
-            type="password"
-            class="field-input"
-            :value="getDeeplApiKey()"
-            autocomplete="off"
-            placeholder="输入 DeepL API Key"
-            @input="saveDeeplApiKey(($event.target as HTMLInputElement).value)"
-          />
-          <span class="field-help">Key 只写入当前浏览器的扩展存储。</span>
-        </label>
-
-        <label class="block md:col-span-2 md:max-w-sm">
-          <span class="field-label">Google 失败后使用 DeepL</span>
-          <div class="relative">
-            <input
-              v-model.number="config.translationService.fallbackDurationMinutes"
-              type="number"
-              min="1"
-              step="1"
-              class="field-input pr-16"
-              @input="saveConfigChange"
-            />
-            <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-slate-400">分钟</span>
+            <label class="field"
+              >目标语言（_tl_）<select
+                v-model="config.basic.targetLang"
+                class="input"
+                @change="saveConfigChange"
+              >
+                <option value="zh-CN">简体中文</option>
+                <option value="en">English</option>
+              </select></label
+            >
+            <div class="field"><span>AI 翻译</span>
+              <div class="flex min-h-9 items-center justify-between gap-2">
+                <span class="text-sm text-slate-700">{{ config.translationService.translatePrompt === DEFAULT_TRANSLATE_PROMPT ? '默认翻译指令' : '自定义翻译指令' }}</span>
+                <ActionButton action="edit" label="编辑 AI 翻译指令" @click="editTranslation" />
+              </div>
+            </div>
           </div>
-          <span class="field-help">自动模式检测到 Google 暂时不可用后，在这段时间内直接使用 DeepL。</span>
-        </label>
-      </div>
-    </div>
-
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div class="flex flex-col gap-3 border-b border-slate-100 px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div class="flex flex-wrap items-center gap-2">
-            <h3 class="text-base font-semibold text-slate-900">AI 翻译</h3>
-            <span class="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">需要本地服务</span>
-          </div>
-          <p class="mt-1 text-sm text-slate-500">选择 AI 翻译时使用此 Prompt；服务离线时会自动降级到 Google / DeepL。</p>
         </div>
-        <button
-          type="button"
-          class="w-fit rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
-          @click="restoreDefaultPrompt"
-        >
-          恢复默认 Prompt
-        </button>
-      </div>
+      </article>
+      <article class="panel">
+        <div class="panel-heading">
+          DeepL 备用翻译 <span class="muted">浏览器保存</span>
+        </div>
+        <div class="panel-body">
+          <div class="translation-fields">
+            <label class="field"
+              >API 类型<select
+                v-model="config.translationService.deeplApiEndpoint"
+                class="input"
+                @change="saveConfigChange"
+              >
+                <option value="https://api-free.deepl.com/v2/translate">
+                  API Free
+                </option>
+                <option value="https://api.deepl.com/v2/translate">
+                  Developer / Growth
+                </option>
+              </select></label
+            >
+            <label class="field"
+              >备用时长（分钟）<input
+                v-model.number="
+                  config.translationService.fallbackDurationMinutes
+                "
+                class="input"
+                type="number"
+                min="1"
+                step="1"
+                @change="saveConfigChange"
+            /></label>
+            <label class="field"
+              >API Key<input
+                class="input"
+                type="password"
+                :value="getDeeplApiKey()"
+                autocomplete="off"
+                placeholder="输入 DeepL API Key"
+                @input="
+                  saveDeeplApiKey(($event.target as HTMLInputElement).value)
+                "
+            /></label>
+          </div>
+          <p class="muted mt-3">Google 失败后使用 DeepL，到期再尝试 Google。</p>
+        </div>
+      </article>
+    </template>
 
-      <div class="p-6">
-        <label class="block">
-          <span class="field-label">AI 翻译 Prompt</span>
-          <textarea
-            v-model="config.translationService.translatePrompt"
-            class="field-input min-h-36 resize-y leading-6"
-            placeholder="留空则使用内置翻译 Prompt"
-            @input="saveConfigChange"
-          />
-          <span class="field-help">可使用 <code>{userContent}</code> 表示原文，使用 <code>{targetLang}</code> 表示目标语言。</span>
-        </label>
+    <div v-else>
+      <div class="relative">
+        <ActionButton action="copy" label="复制 JSON" class="absolute right-3 top-3 z-10" :disabled="jsonSaving" @click="copyJson" />
+        <label for="basic-config-json" class="sr-only">插件基础配置 JSON</label>
+        <textarea
+          id="basic-config-json"
+          ref="jsonEditor"
+          v-model="jsonDraft"
+          class="field-input json-input min-h-[28rem] resize-y font-mono text-[13px] leading-6"
+          :class="
+            jsonError
+              ? 'border-red-400 focus:border-red-500 focus:ring-red-100'
+              : ''
+          "
+          :disabled="jsonSaving"
+          :aria-invalid="Boolean(jsonError)"
+          :aria-describedby="jsonError ? 'config-json-error' : undefined"
+          spellcheck="false"
+          autocomplete="off"
+          autocapitalize="off"
+          @input="jsonError = ''"
+        />
+      </div>
+      <p
+        v-if="jsonError"
+        id="config-json-error"
+        class="mt-2 text-sm text-red-700"
+        role="alert"
+      >
+        {{ jsonError }}
+      </p>
+      <div class="mt-3 flex flex-wrap items-center justify-end gap-2">
+        <ActionButton action="format" label="格式化 JSON" :disabled="jsonSaving" @click="formatJson" />
+        <ActionButton action="reset" label="还原当前配置" :disabled="jsonSaving || !jsonDirty" @click="resetJson" />
+        <ActionButton action="save" label="保存 JSON 配置" :disabled="jsonSaving || !jsonDirty" @click="saveJson" :loading="jsonSaving" />
       </div>
     </div>
+    <OptionDialog :open="translationOpen" title="AI 翻译指令" @close="translationOpen = false">
+      <label class="settings-page field">翻译指令<textarea v-model="translationDraft" class="input" rows="7" /></label>
+      <template #footer><div class="settings-page toolbar justify-end"><ActionButton action="reset" label="恢复默认翻译指令" class="mr-auto" @click="translationDraft = DEFAULT_TRANSLATE_PROMPT" /><ActionButton action="cancel" label="取消" @click="translationOpen = false" /><ActionButton action="save" label="保存翻译指令" :disabled="!translationDraft.trim()" @click="saveTranslation" /></div></template>
+    </OptionDialog>
   </section>
 </template>
 
 <script setup lang="ts">
+import ActionButton from "../../../components/ui/ActionButton.vue";
+import { confirmOperation } from '../../../components/ui/confirm-operation';
 import { computed, onBeforeUnmount, ref } from "vue";
+import OptionDialog from "./OptionDialog.vue";
+import ToggleSwitch from "../../../components/ui/ToggleSwitch.vue";
+import {
+  ConfigJsonError,
+  parseBasicSettingsJson,
+  serializeBasicSettings,
+} from "../../../common/config-transfer";
 import {
   DEFAULT_TRANSLATE_PROMPT,
   TranslateChannelEnum,
+  apiKeys,
   config,
   getDeeplApiKey,
+  importConfigJson,
   onInput,
   setDeeplApiKey,
 } from "../../../common/storage-config";
@@ -200,7 +230,78 @@ type SaveState = "idle" | "saving" | "saved";
 const saveState = ref<SaveState>("idle");
 let savedTimer: number | undefined;
 let idleTimer: number | undefined;
-const { online, settings } = useServerAdminContext();
+const { online, settings, showNotice } = useServerAdminContext();
+const editMode = ref<"form" | "json">("form");
+const jsonDraft = ref("");
+const jsonError = ref("");
+const jsonSaving = ref(false);
+const jsonEditor = ref<HTMLTextAreaElement>();
+const currentJson = computed(() =>
+  serializeBasicSettings({ config: config.value, apiKeys: apiKeys.value })
+);
+const jsonDirty = computed(() => jsonDraft.value !== currentJson.value);
+
+async function switchMode(mode: "form" | "json") {
+  if (mode === editMode.value || jsonSaving.value) return;
+  if (mode === "json") resetJson();
+  else if (jsonDirty.value && !(await saveJson())) return;
+  editMode.value = mode;
+}
+
+function resetJson() {
+  jsonDraft.value = currentJson.value;
+  jsonError.value = "";
+}
+
+function formatJson(): boolean {
+  try {
+    jsonDraft.value = serializeBasicSettings(
+      parseBasicSettingsJson(jsonDraft.value)
+    );
+    jsonError.value = "";
+    return true;
+  } catch (error) {
+    jsonError.value = (error as Error).message;
+    return false;
+  }
+}
+
+async function copyJson() {
+  if (!formatJson()) return;
+  try {
+    await navigator.clipboard.writeText(jsonDraft.value);
+    showNotice("JSON 已复制");
+  } catch {
+    jsonEditor.value?.focus();
+    jsonEditor.value?.select();
+    showNotice("无法自动复制，已选中 JSON，请手动复制", "warning");
+  }
+}
+
+async function saveJson(): Promise<boolean> {
+  if (jsonSaving.value) return false;
+  jsonSaving.value = true;
+  jsonError.value = "";
+  try {
+    const next = parseBasicSettingsJson(jsonDraft.value);
+    if (next.config.basic.translateProvider === TranslateChannelEnum.AI && !await confirmOperation({title: '确认应用 AI 翻译配置', message: '保存后，已启用自动翻译的账号或页面会按此配置调用 AI 翻译。是否继续？'})) return false;
+    const notified = await importConfigJson(jsonDraft.value);
+    resetJson();
+    showNotice(
+      notified ? "基础配置已保存" : "基础配置已保存，刷新已打开的网页后生效",
+      notified ? "success" : "warning"
+    );
+    return true;
+  } catch (error) {
+    jsonError.value =
+      error instanceof ConfigJsonError
+        ? error.message
+        : "保存失败，原配置未被替换。请重试。";
+    return false;
+  } finally {
+    jsonSaving.value = false;
+  }
+}
 
 const aiTranslationSelection = computed(() => {
   if (!online.value || !settings.value?.ai.defaultProvider) return null;
@@ -209,7 +310,7 @@ const aiTranslationSelection = computed(() => {
   for (const service of settings.value.ai.services) {
     if (!service.enabled || !service.apiKeyConfigured) continue;
     const model = service.models.find(
-      (item) => `${service.id}:${item.name}` === defaultProvider,
+      (item) => `${service.id}:${item.name}` === defaultProvider
     );
     if (model) {
       return {
@@ -221,53 +322,41 @@ const aiTranslationSelection = computed(() => {
   return null;
 });
 
-const aiTranslationAvailable = computed(() => aiTranslationSelection.value !== null);
+const aiTranslationAvailable = computed(
+  () => aiTranslationSelection.value !== null
+);
 const aiOptionLabel = computed(() =>
   aiTranslationSelection.value
     ? `AI（${aiTranslationSelection.value.label}）`
-    : "AI（需要可用的默认模型）",
+    : "AI（需要可用的默认模型）"
 );
-const aiAvailabilityText = computed(() => {
-  if (aiTranslationSelection.value) {
-    return `AI 翻译将使用 ${aiTranslationSelection.value.label}`;
-  }
-  return online.value
-    ? "AI 翻译暂不可选：请启用已配置 API Key 的服务并选择默认模型。"
-    : "AI 翻译暂不可选：本地服务当前离线。";
-});
 
 const saveIndicatorText = computed(() => {
+  if (editMode.value === "json") {
+    if (jsonSaving.value) return "正在保存…";
+    if (jsonError.value) return "请检查配置";
+    return jsonDirty.value ? "有未保存的修改" : "当前配置";
+  }
   if (saveState.value === "saving") return "正在自动保存…";
   if (saveState.value === "saved") return "已自动保存";
   return "修改后自动保存";
 });
 
-const saveIndicatorClasses = computed(() =>
-  saveState.value === "saved"
-    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-    : "border-slate-200 bg-white text-slate-500",
-);
-
 const saveIndicatorDotClasses = computed(() =>
-  saveState.value === "saved" ? "bg-emerald-500" : saveState.value === "saving" ? "bg-blue-500" : "bg-slate-300",
+  editMode.value === "json"
+    ? jsonError.value
+      ? "bg-red-500"
+      : jsonSaving.value
+      ? "bg-blue-500"
+      : jsonDirty.value
+      ? "bg-amber-500"
+      : "bg-slate-300"
+    : saveState.value === "saved"
+    ? "bg-emerald-500"
+    : saveState.value === "saving"
+    ? "bg-blue-500"
+    : "bg-slate-300"
 );
-
-const providerDescription = computed(() => {
-  switch (config.value.basic.translateProvider) {
-    case TranslateChannelEnum.AUTO:
-      return "优先使用 Google；Google 不可用时切换到 DeepL（需要 API Key），不会隐式调用 AI。";
-    case TranslateChannelEnum.GOOGLE:
-      return "直接使用 Google 翻译，无需额外配置。";
-    case TranslateChannelEnum.DEEPL:
-      return "直接使用 DeepL，需要在下方配置 API Key。";
-    case TranslateChannelEnum.AI:
-      return aiTranslationSelection.value
-        ? `使用 ${aiTranslationSelection.value.label}；请求失败时自动回退到 Google / DeepL。`
-        : "AI 不可用时会自动回退到 Google / DeepL。";
-    default:
-      return "选择插件翻译内容时使用的服务。";
-  }
-});
 
 onBeforeUnmount(() => {
   window.clearTimeout(savedTimer);
@@ -278,15 +367,30 @@ function saveConfigChange() {
   onInput();
   showSavingState();
 }
+async function changeAutoTranslate(enabled: boolean) {
+  if (enabled && config.value.basic.translateProvider === TranslateChannelEnum.AI && !await confirmOperation({title: '确认启用 AI 自动翻译', message: '启用后，将自动读取页面文本并调用 AI 翻译，持续消耗 AI 用量。是否继续？'})) return;
+  config.value.basic.autoTranslate = enabled; saveConfigChange();
+}
+async function changeTranslateProvider(event: Event) {
+  const select = event.target as HTMLSelectElement;
+  const provider = select.value as TranslateChannelEnum;
+  if (provider === TranslateChannelEnum.AI && !await confirmOperation({title: '确认使用 AI 翻译', message: '切换后，已启用自动翻译的账号或页面会调用 AI 翻译，持续消耗 AI 用量。是否继续？'})) { select.value = config.value.basic.translateProvider; return; }
+  config.value.basic.translateProvider = provider; saveConfigChange();
+}
 
 function saveDeeplApiKey(key: string) {
   setDeeplApiKey(key);
   showSavingState();
 }
 
-function restoreDefaultPrompt() {
-  config.value.translationService.translatePrompt = DEFAULT_TRANSLATE_PROMPT;
-  saveConfigChange();
+const translationOpen = ref(false), translationDraft = ref('');
+function editTranslation() { translationDraft.value = config.value.translationService.translatePrompt || DEFAULT_TRANSLATE_PROMPT; translationOpen.value = true; }
+function saveTranslation() {
+  if (!translationDraft.value.trim()) return;
+  config.value.translationService.translatePrompt = translationDraft.value.trim();
+  config.value.translationService.promptId = '';
+  config.value.translationService.promptName = '';
+  saveConfigChange(); translationOpen.value = false;
 }
 
 function showSavingState() {
@@ -303,6 +407,17 @@ function showSavingState() {
 </script>
 
 <style scoped>
+.translation-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 16px;
+}
+@media (max-width: 800px) {
+  .translation-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
 .field-label {
   @apply mb-2 block text-sm font-medium text-slate-700;
 }
@@ -311,11 +426,7 @@ function showSavingState() {
   @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100;
 }
 
-.field-help {
-  @apply mt-2 block text-xs leading-5 text-slate-500;
-}
-
-.field-help code {
-  @apply rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px] text-slate-700;
+.json-input {
+  @apply rounded-xl pt-12;
 }
 </style>

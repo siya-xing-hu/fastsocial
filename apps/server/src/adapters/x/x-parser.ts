@@ -24,6 +24,37 @@ export function parseXTimeline(payload: unknown): SocialPost[] {
   return results;
 }
 
+export function parseXHomeTimeline(payload: unknown): SocialPost[] {
+  const home = asObject(getPath(payload, ["data", "home"]));
+  const instructions = asObject(home?.home_timeline_urt ?? home?.home_timeline)?.instructions;
+  if (!Array.isArray(instructions)) throw new Error("X 首页响应结构已变化，无法读取 Post");
+  const posts: SocialPost[] = [];
+  const seen = new Set<string>();
+  const append = (value: unknown) => {
+    const item = asObject(value);
+    if (item?.promotedMetadata) return;
+    const tweet = unwrapTweet(asObject(item?.tweet_results)?.result);
+    const post = tweet && mapTweet(tweet);
+    if (!post || seen.has(post.id)) return;
+    seen.add(post.id);
+    posts.push(post);
+  };
+  for (const value of instructions) {
+    const instruction = asObject(value);
+    const entries = instruction?.entries ?? (instruction?.entry ? [instruction.entry] : []);
+    if (!Array.isArray(entries)) continue;
+    for (const value of entries) {
+      const entry = asObject(value), content = asObject(entry?.content);
+      if (content?.promotedMetadata || String(entry?.entryId ?? "").startsWith("promoted-")) continue;
+      append(content?.itemContent);
+      if (Array.isArray(content?.items)) {
+        for (const value of content.items) append(asObject(asObject(value)?.item)?.itemContent);
+      }
+    }
+  }
+  return posts.slice(0, 20);
+}
+
 function mapTweet(tweet: JsonObject): SocialPost | null {
   const legacy = asObject(tweet.legacy);
   const core = asObject(tweet.core);
@@ -115,6 +146,7 @@ export function parseXAccount(payload: unknown, username: string): SocialAccount
     name: asString(core?.name) ?? asString(legacy?.name) ?? username,
     bio: asString(asObject(user?.profile_bio)?.description) ?? asString(legacy?.description) ?? '',
     fetchedAt: new Date().toISOString(),
+    ...(typeof user?.is_blue_verified === 'boolean' ? { blueVerified: user.is_blue_verified } : {}),
   };
 }
 

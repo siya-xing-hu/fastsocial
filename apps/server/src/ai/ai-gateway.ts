@@ -12,9 +12,9 @@ export class AIGateway {
     this.client = client;
   }
 
-  complete(provider: string | undefined, messages: AIChatMessage[], maxOutputTokens?: number): Promise<string> {
+  complete(provider: string | undefined, messages: AIChatMessage[], maxOutputTokens?: number, timeoutMs?: number): Promise<string> {
     const resolved = this.resolve(provider);
-    return this.client.complete({ ...resolved, messages, maxOutputTokens, ...(maxOutputTokens ? { timeoutMs: 180_000 } : {}) });
+    return this.client.complete({ ...resolved, messages, maxOutputTokens, timeoutMs: timeoutMs ?? (maxOutputTokens ? 180_000 : 60_000) });
   }
 
   fingerprint(): string {

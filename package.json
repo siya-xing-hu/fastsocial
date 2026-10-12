@@ -16,7 +16,8 @@
     "test": "pnpm test:server && pnpm test:extension",
     "test:server": "pnpm --filter @fast-social/server test",
     "test:extension": "pnpm --filter @fast-social/extension test",
-    "check": "pnpm build:contracts && pnpm test && pnpm build:server && pnpm build:extension",
+    "lint:ui": "node scripts/check-ui-conventions.mjs",
+    "check": "pnpm lint:ui && pnpm build:contracts && pnpm test && pnpm build:server && pnpm build:extension",
     "start:server": "pnpm --filter @fast-social/server start"
   },
   "packageManager": "pnpm@11.19.0"

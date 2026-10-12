@@ -17,6 +17,7 @@ export interface AIServiceConfig {
 }
 
 export interface InteractionPrompt {
+  accountIds?: string[];
   id: string;
   name: string;
   scene: "post" | "reply";

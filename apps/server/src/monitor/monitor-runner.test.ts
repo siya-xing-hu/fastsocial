@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { AccountMemory, SocialPost } from '@fast-social/contracts';
+import type { AccountMemory, SocialPost, TimelinePage } from '@fast-social/contracts';
 import { activeMemory, bioSource, type BatchInput, type BatchMatcher } from '../ai/batch-matcher.ts';
 import { openDatabase } from '../db/database.ts';
 import { AccountRepository } from '../repositories/account-repository.ts';
@@ -16,7 +16,8 @@ function harness(posts: SocialPost[]) {
   const rule = monitors.create({ name: 'test', username: 'example', prompt: 'Codex 重置', intervalMinutes: 5 });
   const calls: BatchInput[] = [];
   const sent: string[] = [];
-  const state = { aiError: false, fetchError: false, notifyError: '', pages: 0, bioCalls: 0 };
+  const state = { aiError: false, fetchError: false, notifyError: '', pages: 0, bioCalls: 0,
+    page: undefined as ((cursor: string | undefined, surface: string) => TimelinePage) | undefined };
   const account = { id: 'user-42', username: 'example', name: 'Example', bio: 'AI developer', fetchedAt: new Date().toISOString() };
   const memory: AccountMemory = { topics: { text: 'AI 编程工具', evidenceIds: [bioSource(account)], kind: 'explicit', updatedAt: new Date().toISOString() } };
   const matcher = { fingerprint: () => 'test-model', async analyze(input: BatchInput) {
@@ -31,6 +32,7 @@ function harness(posts: SocialPost[]) {
       async fetchTimelinePage(_account, cursor, surface) {
         state.pages++;
         if (state.fetchError) throw new Error('X unavailable');
+        if (state.page) return state.page(cursor, surface ?? 'posts');
         if (surface === 'replies') return { posts: [], nextCursor: null };
         const offset = Number(cursor ?? 0);
         const ordered = [...posts].reverse();
@@ -78,6 +80,44 @@ test('migrated cursor is retained during learning and 85 new posts are paged and
   assert.equal(h.monitors.get(h.rule.id)?.lastSeenPostId, '86');
   assert.equal(h.accounts.posts(h.account.id).length, 86);
   h.close();
+});
+test('reverse pagination continues through empty filtered pages and stops after covering the committed boundary', async () => {
+  const h = harness([post('100')]);
+  try {
+    await h.runner.run(h.rule.id);
+    const requested: (string | undefined)[] = [];
+    h.state.page = (cursor, surface) => {
+      if (surface === 'replies') return { posts: [], nextCursor: null };
+      requested.push(cursor);
+      if (!cursor) return { posts: [post('105'), post('104')], nextCursor: 'empty' };
+      if (cursor === 'empty') return { posts: [], nextCursor: 'remaining' };
+      if (cursor === 'remaining') return { posts: [post('103'), post('102'), post('101')], nextCursor: 'boundary' };
+      if (cursor === 'boundary') return { posts: [post('100'), post('99')], nextCursor: 'old-history' };
+      throw new Error('Must not download all history');
+    };
+    await h.runner.run(h.rule.id);
+    assert.deepEqual(requested, [undefined, 'empty', 'remaining', 'boundary']);
+    assert.deepEqual(h.sent, ['101', '102', '103', '104', '105']);
+    assert.equal(h.monitors.get(h.rule.id)?.lastSeenPostId, '105');
+  } finally { h.close(); }
+});
+test('repeated cursors, page caps and interrupted pagination never commit an incomplete window', async () => {
+  for (const mode of ['repeat', 'cap', 'failure'] as const) {
+    const h = harness([post('100')]);
+    try {
+      await h.runner.run(h.rule.id);
+      const profile = h.accounts.profile(h.account.id); let pages = 0;
+      h.state.page = (_cursor, surface) => {
+        if (surface === 'replies') return { posts: [], nextCursor: null };
+        pages++;
+        if (mode === 'failure' && pages === 2) throw new Error('请求额度已用尽');
+        return { posts: pages === 1 ? [post('102'), post('101')] : [], nextCursor: mode === 'repeat' ? 'same' : String(pages) };
+      };
+      await assert.rejects(h.runner.run(h.rule.id), mode === 'repeat' ? /游标重复/ : mode === 'cap' ? /50 页/ : /额度已用尽/);
+      assert.equal(h.monitors.get(h.rule.id)?.lastSeenPostId, '100');
+      assert.deepEqual(h.accounts.profile(h.account.id), profile); assert.deepEqual(h.sent, []);
+    } finally { h.close(); }
+  }
 });
 
 test('AI failure keeps offset; next schedule compensates from the same offset', async () => {

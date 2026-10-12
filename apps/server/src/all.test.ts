@@ -1,7 +1,9 @@
 import "./app.test.ts";
 import "./runtime-config.test.ts";
+import './observability/trace.test.ts';
 import "./adapters/x/x-parser.test.ts";
 import "./adapters/x/x-client.test.ts";
+import './adapters/x/request-queue.test.ts';
 import "./ai/ai-matcher.test.ts";
 import "./ai/openai-compatible-client.test.ts";
 import "./monitor/monitor-runner.test.ts";
@@ -12,3 +14,20 @@ import "./routes/routes.test.ts";
 import "./telegram/telegram-notifier.test.ts";
 
 import "./ai/batch-matcher.test.ts";
+import './outreach/runner.test.ts';
+import './outreach/x-client.test.ts';
+import './outreach/routes.test.ts';
+import './outreach/service.test.ts';
+
+import './configuration/configuration.test.ts';
+import './configuration/account-home.test.ts';
+import './configuration/request-limits.test.ts';
+import './configuration/profile.test.ts';
+import './workflows/workflows.test.ts';
+import './workflows/matcher.test.ts';
+import './workflows/progress.test.ts';
+import './following/following.test.ts';
+import './workflows/user-profile.test.ts';
+import './assistant/assistant.test.ts';
+import './assistant/skills-v2.test.ts';
+import './assistant/skill-storage.test.ts';

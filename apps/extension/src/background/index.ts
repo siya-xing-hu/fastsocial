@@ -15,7 +15,8 @@ import { execGptPrompt, execGptPromptStream } from "../utils/ai";
 import { randomString, retry } from "../utils/kit";
 import { translate } from "../utils/translate";
 import { addTabListener } from "./listener";
-import { localServiceClient } from "./local-service-client";
+import { LocalServiceError, localServiceClient } from "./local-service-client";
+import { openAssistantPanel } from "../assistant/open-panel";
 
 // 跟踪已就绪的标签页
 export const readyTabs = new Set<number>();
@@ -27,7 +28,11 @@ export function init() {
   const now = new Date();
   log("### init ###", now.toISOString());
 
-  chrome.commands.onCommand.addListener((command) => {
+  chrome.commands.onCommand.addListener((command, tab) => {
+    if (command === "open-assistant") {
+      void openAssistantPanel('toggle', tab).catch(log_error);
+      return;
+    }
     if (command !== "open-options") {
       return;
     }
@@ -73,6 +78,7 @@ export function init() {
             sendResponse({
               is_ok: false,
               error: error instanceof Error ? error.message : String(error),
+              code: error instanceof LocalServiceError ? error.code : undefined,
             });
           });
           return true;

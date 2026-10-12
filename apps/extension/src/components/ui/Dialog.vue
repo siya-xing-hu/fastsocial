@@ -5,9 +5,7 @@
     <div class="dialog-container">
       <!-- 关闭按钮 -->
       <div class="absolute top-2 right-2">
-        <button @click="cancel" class="hover:opacity-80">
-          <X />
-        </button>
+        <ActionButton action="cancel" label="取消" @click="cancel" />
       </div>
       <!-- 标题和内容 -->
       <div>
@@ -19,19 +17,15 @@
         }}</span>
       </div>
       <div class="flex justify-end mt-4">
-        <button
-          @click="confirm"
-          class="confirm-button"
-        >
-          确认
-        </button>
+        <ActionButton action="confirm" label="确认" @click="confirm" />
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { X, Sparkles } from "lucide-vue-next";
+import ActionButton from "./ActionButton.vue";
+import { Sparkles } from "lucide-vue-next";
 
 defineProps({
   text: String,

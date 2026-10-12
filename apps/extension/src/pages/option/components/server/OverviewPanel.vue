@@ -44,16 +44,14 @@
           <p class="text-sm font-medium text-slate-900">{{ item.label }}</p>
           <p class="mt-0.5 truncate text-xs text-slate-500">{{ item.description }}</p>
         </div>
-        <button type="button" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50" @click="$emit('navigate', item.target)">
-          {{ item.complete ? '查看' : '去配置' }}
-          <ChevronRight class="h-3.5 w-3.5" />
-        </button>
+        <ActionButton action="settings" label="查看配置" @click="$emit('navigate', item.target)" />
       </div>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
+import ActionButton from "../../../../components/ui/ActionButton.vue";
 import { computed } from "vue";
 import { Check, ChevronRight } from "lucide-vue-next";
 import type { ServerSection } from "../../option-navigation";
@@ -79,7 +77,7 @@ const usableCookieCount = computed(
 const checklist = computed(() => [
   {
     key: "x",
-    label: "X 访问 Cookie",
+    label: "𝕏 访问 Cookie",
     description: usableCookieCount.value > 0
       ? `${usableCookieCount.value} 个 Cookie 可用于读取 Post`
       : "没有启用且未失效的 Cookie，无法读取用户 Post",

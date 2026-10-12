@@ -12,6 +12,7 @@ import {
 } from "../../common/runtime-message";
 import { log, log_error } from "../../common/logging";
 import { config, TranslateChannelEnum } from "../../common/storage-config";
+import { confirmOperation } from '../ui/confirm-operation';
 
 /**
  * 翻译文本内容
@@ -87,6 +88,7 @@ export async function execTranslate(
   // 处理新文本翻译
   const textContent = targetDiv.textContent;
   if (!textContent || !isContent(textContent)) return;
+  if (config.value.basic.translateProvider === TranslateChannelEnum.AI && !await confirmOperation({title: '确认 AI 翻译', message: '将这段页面文本发送给 AI 进行翻译，消耗 AI 用量。是否继续？'})) return;
   
   log("开始翻译", textContent);
   const translatedText = await translateContent(config.value.basic.translateProvider, textContent, isAdvanced);
@@ -121,6 +123,7 @@ export async function execNotionTranslate(
       targetDiv.textContent = textContent.split("\u200D\n")[0];
       return;
     }
+    if (config.value.basic.translateProvider === TranslateChannelEnum.AI && !await confirmOperation({title: '确认 AI 翻译', message: '将这段页面文本发送给 AI 进行翻译，消耗 AI 用量。是否继续？'})) return;
     const translatedText = await translateContent(config.value.basic.translateProvider, textContent, isAdvanced);
     if (!translatedText) {
       log("No translated text.");
@@ -207,4 +210,4 @@ function createContainer(
   // 将翻译元素插入到目标元素后面
   targetDiv.parentNode?.insertBefore(div, targetDiv.nextSibling);
   targetDiv.setAttribute(isAdvanced? "text-is-translated-advanced" : "text-is-translated", translateId);
-} 
+}
