@@ -1,6 +1,7 @@
 import type { AIChatMessage, AIModelConfig, AIServiceConfig } from "@fast-social/contracts";
 import type { FetchLike } from "../adapters/x/x-client.ts";
 import { trace, withTrace } from '../observability/trace.ts';
+import { readAIResponse } from './stream-reader.ts';
 
 export interface CompletionInput {
   service: AIServiceConfig;
@@ -29,15 +30,9 @@ export class OpenAICompatibleClient {
     const deadline = Date.now() + (input.timeoutMs ?? 60_000);
     let current = input;
     for (let attempt = 0; attempt < 2; attempt++) {
-      const response = await this.request({ ...current, timeoutMs: Math.max(1, deadline - Date.now()) }, false);
-      const payload = (await response.json()) as {
-        choices?: Array<{ finish_reason?: string; message?: { content?: string } }>;
-        content?: Array<{ text?: string }>;
-        stop_reason?: string;
-        usage?: { completion_tokens?: number; output_tokens?: number };
-      };
-      if (payload.stop_reason === "max_tokens" || payload.choices?.[0]?.finish_reason === "length") {
-        const reported = payload.usage?.completion_tokens ?? payload.usage?.output_tokens;
+      const result = await this.receive({ ...current, timeoutMs: Math.max(1, deadline - Date.now()) });
+      if (result.truncated) {
+        const reported = result.usage.completion_tokens ?? result.usage.output_tokens;
         const used = typeof reported === "number" && Number.isFinite(reported) && reported > 0 ? reported : 0;
         const previous = Math.max(current.maxOutputTokens ?? (input.service.apiFormat === "anthropic" ? 1024 : 4096), used);
         const next = Math.min(MAX_TRUNCATION_RETRY_TOKENS, Math.max(4096, Math.ceil(previous * 2)));
@@ -50,15 +45,9 @@ export class OpenAICompatibleClient {
         }
         throw new AIOutputTruncatedError();
       }
-      const content = input.service.apiFormat === "anthropic"
-        ? payload.content
-          ?.map((block) => block.text)
-          .filter((text): text is string => typeof text === "string")
-          .join("")
-        : payload.choices?.[0]?.message?.content;
-      if (typeof content !== "string" || !content) throw new Error("AI 服务返回了空内容");
-      trace('ai.complete', 'AI 返回完整内容', { serviceId: input.service.id, model: input.model.name, content, usage: payload.usage });
-      return content;
+      if (!result.content) throw new Error("AI 服务返回了空内容");
+      trace('ai.complete', 'AI 返回完整内容', { serviceId: input.service.id, model: input.model.name, content: result.content, usage: result.usage });
+      return result.content;
     }
     throw new AIOutputTruncatedError();
   }
@@ -67,51 +56,32 @@ export class OpenAICompatibleClient {
     input: CompletionInput,
     onChunk: (chunk: string) => void | Promise<void>,
   ): Promise<void> {
-    const response = await this.request(input, true);
-    if (!response.body) throw new Error("AI 服务没有返回数据流");
-    const apiFormat = input.service.apiFormat ?? "openai";
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    while (true) {
-      const { value, done } = await reader.read();
-      buffer += decoder.decode(value, { stream: !done });
-      const lines = buffer.split("\n");
-      buffer = done ? "" : (lines.pop() ?? "");
-      for (const line of lines) {
-        const data = line.trim().replace(/^data:\s*/, "");
-        if (!data || data === "[DONE]") continue;
-        let payload: {
-          type?: string;
-          choices?: Array<{ finish_reason?: string; delta?: { content?: string } }>;
-          delta?: { text?: string; stop_reason?: string };
-          error?: { message?: string };
-        };
-        try {
-          payload = JSON.parse(data) as typeof payload;
-        } catch {
-          // Ignore keepalive and provider-specific lines.
-          continue;
-        }
-        if (payload.error) throw new Error(payload.error.message || "AI 流返回错误");
-        if (payload.choices?.[0]?.finish_reason === "length" || payload.delta?.stop_reason === "max_tokens") {
-          await reader.cancel();
-          throw new AIOutputTruncatedError();
-        }
-        const chunk = apiFormat === "anthropic"
-          ? payload.type === "content_block_delta" ? payload.delta?.text : undefined
-          : payload.choices?.[0]?.delta?.content;
-        if (chunk) await onChunk(chunk);
-      }
-      if (done) break;
-    }
+    const result = await this.receive(input, onChunk);
+    if (result.truncated) throw new AIOutputTruncatedError();
+    if (!result.content) throw new Error("AI 服务返回了空内容");
   }
 
-  private async request(input: CompletionInput, stream: boolean): Promise<Response> {
+  private async receive(input: CompletionInput, onChunk?: (chunk: string) => void | Promise<void>) {
+    const started = Date.now();
+    const response = await this.request(input);
+    trace('ai.stream.started', 'AI 响应连接已建立，开始接收内容', { serviceId: input.service.id, model: input.model.name, elapsedMs: Date.now() - started });
+    let first = true;
+    return readAIResponse(response, input.service.apiFormat ?? 'openai', async text => {
+      if (first) {
+        first = false;
+        trace('ai.stream.first_text', 'AI 首段正文已收到', { serviceId: input.service.id, model: input.model.name, elapsedMs: Date.now() - started });
+      }
+      await onChunk?.(text);
+    });
+  }
+
+  private async request(input: CompletionInput): Promise<Response> {
     if (!input.service.apiKey) throw new Error("AI 服务尚未配置 API Key");
     const apiFormat = input.service.apiFormat ?? "openai";
+    const stream = true;
     const headers: Record<string, string> = {
       "content-type": "application/json",
+      accept: "text/event-stream",
       authorization: `Bearer ${input.service.apiKey}`,
     };
     const body = apiFormat === "anthropic"

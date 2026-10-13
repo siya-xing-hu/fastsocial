@@ -427,9 +427,9 @@ export class WorkflowService {
         }
       };
       if (w.source === 'user' && this.deps.userListener) {
-        await this.deps.userListener.withWorkflowBatch(w, account.id, false, process, cursor => {
+        await this.deps.userListener.withWorkflowBatch(w, account.id, false, process, (cursor, postScan) => {
           this.ensureCurrent(w);
-          repo.write({ ...repo.get(id)!, lastSeenPostId: cursor });
+          repo.write({ ...repo.get(id)!, lastSeenPostId: cursor, postScan });
         }, report, progress.scan, postId => repo.seen(id, postId));
       } else await process();
       const current = repo.get(id);

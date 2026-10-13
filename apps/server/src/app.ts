@@ -6,7 +6,8 @@ import { WorkflowMatcher } from "./workflows/matcher.ts";
 import { FollowingRepository } from './following/repository.ts';
 import { FollowingService } from './following/service.ts';
 import { registerFollowingRoutes } from './following/routes.ts';
-import { memoryText, inputSize, INPUT_BUDGET } from './ai/batch-matcher.ts';
+import { memoryText } from './ai/batch-matcher.ts';
+import { portraitInput } from './ai/portrait.ts';
 import { AccountRequestLimitError } from './configuration/request-limits.ts';
 import { registerConfigurationRoutes } from "./configuration/routes.ts";
 import Fastify from "fastify";
@@ -92,12 +93,10 @@ export function createApp(options: AppOptions = {}) {
   const socialActions = new OutreachXClient(settingsRepository, xRequests, xFetch);
   const followingService = new FollowingService(new FollowingRepository(database), settingsRepository, socialActions, async (accountId, profile) => {
     const page = await xClient.fetchTimelinePage(profile.account, undefined, 'posts', accountId);
-    const posts = page.posts.filter(post => post.type !== 'repost').sort((a,b) => a.createdAt.localeCompare(b.createdAt)).slice(-10);
-    const input = { account: profile.account, memory: {}, posts, context: [], rules: [], includeBio: true };
-    // Keep full source text; reduce the sample instead of truncating a post.
-    while (inputSize(input) > INPUT_BUDGET && input.posts.length > 1) input.posts.shift();
+    const input = portraitInput(profile.account, page.posts);
     const result = await matcher.analyze(input);
-    return result.memory ? memoryText(result.memory) : '公开资料不足，暂未形成可靠画像。';
+    const evidenceIds = new Set(Object.values(result.memory ?? {}).flatMap(fact => fact.evidenceIds));
+    return { summary: result.memory ? memoryText(result.memory) : '', summaryEvidence: input.posts.filter(post => evidenceIds.has(post.id)) };
   });
   const trackedActions = {
     identity: socialActions.identity.bind(socialActions), home: socialActions.home.bind(socialActions),

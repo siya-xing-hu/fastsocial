@@ -60,6 +60,7 @@ function headerValues(headers: Headers): Record<string, string> {
 }
 export function requestCurl(url: string, method: string, headers: Headers, body?: string, redirect?: RequestRedirect): string {
   const args = ['curl', '-q', '--silent', '--show-error', '--include', '--globoff', '--compressed'];
+  if (headers.get('accept')?.includes('text/event-stream')) args.push('--no-buffer');
   if (!redirect || redirect === 'follow') args.push('--location');
   args.push('--request', quote(method), '--url', quote(url));
   headers.forEach((value, name) => args.push('--header', quote(`${name}: ${value}`)));

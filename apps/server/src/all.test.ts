@@ -14,6 +14,7 @@ import "./routes/routes.test.ts";
 import "./telegram/telegram-notifier.test.ts";
 
 import "./ai/batch-matcher.test.ts";
+import './ai/portrait.test.ts';
 import './outreach/runner.test.ts';
 import './outreach/x-client.test.ts';
 import './outreach/routes.test.ts';

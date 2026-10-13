@@ -9,18 +9,19 @@ import { trace, withTrace, errorDetails } from '../observability/trace.ts';
 import { withQueuedXRequests } from '../adapters/x/request-queue.ts';
 
 type Social = Pick<OutreachXClient, 'identity' | 'profile' | 'follow' | 'unfollow'>;
+type Portrait = Required<Pick<FollowingEntry, 'summary' | 'summaryEvidence'>>;
 export class FollowingService {
   private readonly repo: FollowingRepository;
   private readonly settings: SettingsRepository;
   private readonly x: Social;
-  private readonly summarize: (accountId: string, profile: XProfileRelationship) => Promise<string>;
+  private readonly summarize: (accountId: string, profile: XProfileRelationship) => Promise<Portrait>;
   private locks = new Map<string, Promise<unknown>>();
   private jobs = new Map<string, Promise<void>>();
   private queue: Promise<void> = Promise.resolve();
   private deferredPortraits = new AsyncLocalStorage<Map<string, string>>();
   private stopping = false;
   constructor(repo: FollowingRepository, settings: SettingsRepository, x: Social,
-    summarize: (accountId: string, profile: XProfileRelationship) => Promise<string>) {
+    summarize: (accountId: string, profile: XProfileRelationship) => Promise<Portrait>) {
     this.repo = repo; this.settings = settings; this.x = x; this.summarize = summarize;
   }
   private identity(accountId: string): OutreachIdentity { return this.x.identity(accountId); }
@@ -33,6 +34,13 @@ export class FollowingService {
     const entry = this.repo.get(identity.actorId, id);
     if (!entry) throw new Error('当前账号中没有这条关注记录');
     return entry;
+  }
+  editSummary(accountId: string, id: string, text: string): FollowingEntry {
+    const entry = this.list(accountId).find(row => row.id === id);
+    if (!entry) throw new Error('当前账号中没有这条关注记录');
+    if (this.jobs.has(id) || ['pending', 'running'].includes(entry.summaryStatus)) throw new Error('画像正在更新，请完成后再保存');
+    return this.repo.save({ ...entry, summary: text.trim(), summaryStatus: 'done', summaryError: null,
+      summaryUpdatedAt: new Date().toISOString() });
   }
   private async lock<T>(key: string, work: () => Promise<T>): Promise<T> {
     if (this.stopping) throw new Error('服务正在停止');
@@ -171,10 +179,10 @@ export class FollowingService {
           return saved.checkedAt ? this.repo.save({ ...saved, user: profile.account }) : this.confirm({ ...saved, user: profile.account }, profile);
         });
         this.repo.save({ ...current, summaryStatus: 'running', summaryError: null });
-        const summary = await this.summarize(accountId, { account: current.user, following: current.status === 'following', followedBy: current.followedBy });
+        const portrait = await this.summarize(accountId, { account: current.user, following: current.status === 'following', followedBy: current.followedBy });
         const latest = this.entry(identity, id);
-        this.repo.save({ ...latest, summary, summaryStatus: 'done', summaryUpdatedAt: new Date().toISOString(), summaryError: null });
-        trace('portrait.done', '关注用户画像已更新', { summary });
+        this.repo.save({ ...latest, ...portrait, summaryStatus: 'done', summaryUpdatedAt: new Date().toISOString(), summaryError: null });
+        trace('portrait.done', '关注用户画像已更新', portrait);
       } catch (error) {
         trace('portrait.error', '关注用户画像更新失败', { error: errorDetails(error) });
         const latest = this.entry(identity, id);

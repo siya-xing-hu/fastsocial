@@ -118,7 +118,7 @@ test('X queue logs waiting and blocked requests without emitting a curl or consu
   });
   assert.equal(sends, 2); assert.equal(consumed, 1);
   assert.equal(entries.filter(e => e.event === 'http.request').length, 2);
-  assert.ok(entries.some(e => e.event === 'x.wait' && e.data.waitMs === 30000));
+  assert.ok(entries.some(e => e.event === 'x.wait' && e.data.waitMs === 10000));
   assert.ok(entries.some(e => e.event === 'x.blocked'));
   queue.stop();
 });
@@ -148,4 +148,28 @@ test('AI and local work run while X is waiting; elapsed AI time counts toward th
       assert.ok(entries.filter(e => e.context.system === 'AI').every(e => !e.context.xRequestId));
     });
   } finally { release(); queue.stop(); }
+});
+
+
+test('buffered AI calls still receive live streams and log one complete exchange with an unbuffered curl', async () => {
+  const {logger, entries} = capture();
+  const raw = 'data: {"choices":[{"delta":{"content":"中文"}}]}\n\n'
+    + 'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n';
+  const client = new OpenAICompatibleClient(logger.fetch('AI', async (_url, init) => {
+    assert.equal(JSON.parse(String(init?.body)).stream, true);
+    return new Response(raw, {headers: {'content-type': 'text/event-stream'}});
+  }));
+  const output = await logger.run({traceId: 'buffered-stream'}, () => client.complete({
+    service: {id: 'fake', name: 'Fake', endpoint: 'https://fixture.invalid/chat', apiKey: 'fake', enabled: true, models: [{name: 'model'}]},
+    model: {name: 'model'}, messages: [{role: 'user', content: 'test'}],
+  }));
+  assert.equal(output, '中文');
+  const request = entries.find(e => e.event === 'http.request')!;
+  assert.match(String(request.data.curl), /--no-buffer/); assert.match(String(request.data.curl), /"stream":true/);
+  const responses = entries.filter(e => e.event === 'http.response'); assert.equal(responses.length, 1);
+  const response = responses[0]!; assert.equal(response.data.responseBody, raw);
+  assert.equal(formatTrace(response).trimEnd().split('\n').length, 1);
+  assert.equal(JSON.parse(String(response.data.requestBody)).stream, true);
+  assert.deepEqual(entries.filter(e => e.event.startsWith('ai.stream')).map(e => e.event), ['ai.stream.started', 'ai.stream.first_text']);
+  assert.ok(entries.every(e => e.context.traceId === 'buffered-stream'));
 });

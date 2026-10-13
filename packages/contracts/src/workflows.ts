@@ -28,6 +28,8 @@ export interface Workflow extends WorkflowInput {
   lastCheckedAt: string | null;
   lastError: string | null;
   lastSeenPostId?: string | null;
+  /** Continue a capped Post scan before advancing its committed high-water mark. */
+  postScan?: { cursor: string; newestPostId: string | null; accountId: string } | null;
   retryAt?: string | null;
 }
 export interface WorkflowRecord {

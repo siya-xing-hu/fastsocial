@@ -57,7 +57,8 @@ export class AccountRepository {
     const cursors = this.database.prepare('SELECT last_seen_post_id FROM monitors WHERE username = ? COLLATE NOCASE').all(username) as { last_seen_post_id: string | null }[];
     if (!cursors.length || cursors.some(row => !row.last_seen_post_id || !/^\d+$/.test(row.last_seen_post_id))) return;
     const boundary = cursors.map(row => BigInt(row.last_seen_post_id!)).reduce((a, b) => a < b ? a : b);
-    const protectedIds = new Set(Object.values(this.profile(accountId)?.memory ?? {}).flatMap(fact => fact.evidenceIds));
+    const profile = this.profile(accountId);
+    const protectedIds = new Set([...(profile?.evidenceIds ?? []), ...Object.values(profile?.memory ?? {}).flatMap(fact => fact.evidenceIds)]);
     const cutoff = Date.now() - 30 * 86400000;
     const remove = this.database.prepare('DELETE FROM account_posts WHERE account_id=? AND post_id=?');
     for (const post of this.posts(accountId)) {

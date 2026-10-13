@@ -8,7 +8,12 @@ export interface SocialAccount {
   fetchedAt: string;
   blueVerified?: boolean;
 }
-export interface TimelinePage { posts: SocialPost[]; nextCursor: string | null }
+export interface TimelinePage {
+  posts: SocialPost[];
+  nextCursor: string | null;
+  /** Chronological top-level posts, excluding pinned/promoted/conversation context. */
+  boundaryPostIds?: string[];
+}
 export type MemorySection = 'background' | 'topics' | 'language' | 'recent';
 export interface MemoryFact {
   text: string;
@@ -20,6 +25,10 @@ export type AccountMemory = Partial<Record<MemorySection, MemoryFact>>;
 export interface AccountProfile {
   account: SocialAccount;
   memory: AccountMemory;
+  /** Exact manually edited text; AI rebuilds replace it with structured memory. */
+  portraitText?: string;
+  /** Preserve the original sources when manually editing or clearing a portrait. */
+  evidenceIds?: string[];
   version: number;
   initialized: boolean;
   bioSource?: string;

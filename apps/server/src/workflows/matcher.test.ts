@@ -10,7 +10,7 @@ const posts = (count: number): SocialPost[] => Array.from({ length: count }, (_,
   platform: 'x', id: String(2000000000000000000n + BigInt(i)), author: `author${i}`, text: `产品进展 ${i}`,
   type: 'post', url: '', createdAt: '2026-10-10T00:00:00Z',
 }));
-const result = (items: { postId: string }[]) => JSON.stringify({ decisions: items.map(post => ({ postId: post.postId, matched: true, message: '有明确发布进展' })) });
+const result = (items: { postId: string }[]) => JSON.stringify({ matches: items.map(post => ({ postId: post.postId, message: '有明确发布进展' })) });
 function fixture(reply?: (items: { postId: string }[], call: number) => string) {
   const calls: AIChatMessage[][] = [];
   const matcher = new WorkflowMatcher({ async complete(_provider, messages, outputTokens) {
@@ -48,18 +48,18 @@ test('empty input needs no AI and an oversized individual post or condition fail
   await assert.rejects(f.matcher.evaluate('条件'.repeat(10000), posts(1)), /输入预算/);
   assert.equal(f.calls.length, 0);
 });
-test('batch validation rejects missing, duplicate, foreign or malformed decisions and accepts out of order fenced results', () => {
-  const input = posts(2), valid = input.map(p => ({ postId: p.id, matched: true, message: '命中' }));
-  assert.deepEqual(parseWorkflowDecisions('```json\n' + JSON.stringify({ decisions: [...valid].reverse() }) + '\n```', input), [...valid].reverse());
+test('batch validation rejects missing arrays, duplicate, foreign or malformed matches and accepts out of order fenced results', () => {
+  const input = posts(2), valid = input.map(p => ({ postId: p.id, message: '命中' }));
+  assert.deepEqual(parseWorkflowDecisions('```json\n' + JSON.stringify({ matches: [...valid].reverse() }) + '\n```', input), [...valid].reverse().map(d => ({ ...d, matched: true })));
   for (const raw of ['no', '{}', 'null', ...[
-    [valid[0]], [valid[0], valid[0]], [valid[0], { ...valid[1], postId: 'unknown' }],
+    [valid[0], valid[0]], [valid[0], { ...valid[1], postId: 'unknown' }],
     [valid[0], { ...valid[1], postId: Number(input[1]!.id) }],
     [valid[0], { ...valid[1], matched: 'true' }], [valid[0], { ...valid[1], message: '' }],
-  ].map(decisions => JSON.stringify({ decisions }))]) assert.throws(() => parseWorkflowDecisions(raw, input), /AI 批量判断/);
+  ].map(matches => JSON.stringify({ matches }))]) assert.throws(() => parseWorkflowDecisions(raw, input), /AI 批量判断/);
 });
 test('a failed later batch yields no partial result and truncated output is never treated as a non-match', async () => {
-  const f = fixture((items, call) => call === 2 ? '{"decisions":[]}' : result(items));
-  await assert.rejects(f.matcher.evaluate('产品发布', posts(35)), /遗漏帖子/); assert.equal(f.calls.length, 2);
+  const f = fixture((items, call) => call === 2 ? '{"matches":[' : result(items));
+  await assert.rejects(f.matcher.evaluate('产品发布', posts(35)), /不是有效 JSON/); assert.equal(f.calls.length, 2);
   const truncated = fixture(() => { throw new AIOutputTruncatedError(); });
   await assert.rejects(truncated.matcher.evaluate('产品发布', posts(20)), AIOutputTruncatedError);
   assert.equal(truncated.calls.length, 1);
@@ -68,4 +68,13 @@ test('cancelled workflows stop between batches', async () => {
   const f = fixture(); let checks = 0;
   await assert.rejects(f.matcher.evaluate('产品发布', posts(65), () => { if (++checks === 3) throw new Error('cancelled'); }), /cancelled/);
   assert.equal(f.calls.length, 1);
+});
+
+test('sparse or empty matches still account for every scanned post without AI non-match descriptions', async () => {
+  const f = fixture(items => JSON.stringify({ matches: [{ postId: items[3]!.postId, message: '明确命中' }] }));
+  const input = posts(20), decisions = await f.matcher.evaluate('产品发布', input);
+  assert.equal(decisions.length, 20); assert.equal(decisions.filter(d => d.matched).length, 1);
+  assert.ok(decisions.filter(d => !d.matched).every(d => d.message === ''));
+  assert.deepEqual(parseWorkflowDecisions('{"matches":[]}', input), input.map(p => ({ postId: p.id, matched: false, message: '' })));
+  assert.match(f.calls[0]![0]!.content, /只输出确定命中/);
 });

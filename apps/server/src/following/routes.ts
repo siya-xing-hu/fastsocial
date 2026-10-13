@@ -15,4 +15,8 @@ export function registerFollowingRoutes(app: FastifyInstance, service: Following
   app.post<{Params:{accountId:string;id:string}}>('/api/accounts/:accountId/following/:id/summary', async req => {
     service.enqueue(req.params.accountId,req.params.id,{manual:true}); return {ok:true,data:{queued:true}};
   });
+  app.put<{Params:{accountId:string;id:string};Body:{text?:unknown}}>('/api/accounts/:accountId/following/:id/summary', async req => {
+    if (typeof req.body?.text !== 'string') throw new ValidationError('画像必须是文本');
+    return {ok:true,data:service.editSummary(req.params.accountId,req.params.id,req.body.text)};
+  });
 }

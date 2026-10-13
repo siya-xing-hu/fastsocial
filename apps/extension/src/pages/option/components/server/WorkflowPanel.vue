@@ -35,7 +35,8 @@
                   <strong>{{ w.name }}</strong>
                   <div class="muted mt-1">
                     {{ accountName(w.accountId) }} · 每
-                    {{ w.intervalMinutes }} 分钟
+                    {{ w.intervalMinutes }} 分钟 ·
+                    <span class="inline-block">上次执行：{{ lastExecutionTime(w) }}</span>
                   </div>
                   <div v-if="runs[w.id]" class="text-xs mt-1 max-w-xs whitespace-pre-line" role="status"
                     :class="runs[w.id].status === 'failed' ? 'text-red-600' : runs[w.id].status === 'running' ? 'text-blue-600' : 'text-slate-500'">
@@ -214,28 +215,11 @@
         </article>
       </div></OptionDialog
     >
-    <OptionDialog :open="profileOpen" :title="`@${profileWorkflow?.usernames[0] ?? ''} · 用户画像`" :close-disabled="busy" @close="profileOpen = false">
-      <div class="settings-page">
-      <p class="muted mb-4">更新画像：根据最新 Profile 和最近 20 条 Post 重新构建。任务执行时增量更新。</p>
-      <div v-if="profileView?.profile" class="space-y-4">
-        <p class="muted">{{ profileView.profile.account.bio || '暂无简介' }}</p>
-        <label class="field">画像 v{{ profileView.profile.version }} · {{ [...profileText].length }}/250 字
-          <textarea v-model="profileText" class="input" rows="6" :disabled="busy" placeholder="背景：…&#10;主题：…&#10;用语：…&#10;近况：…" />
-        </label>
-        <p class="muted">同一用户的监听任务共享画像，用于理解帖子和生成回复。</p>
-        <details v-if="profileView.evidence.length"><summary class="muted cursor-pointer">画像依据 · {{ profileView.evidence.length }} 条</summary>
-          <div v-for="post in profileView.evidence" :key="post.id" class="mt-3"><p class="whitespace-pre-wrap text-sm">{{ post.text }}</p><a class="text-xs text-blue-600" :href="post.url" target="_blank" rel="noopener noreferrer">查看原帖</a></div>
-        </details>
-      </div>
-      <p v-else class="muted">暂无画像，点击“更新画像”即可建立。</p>
-      <p v-if="profileView?.status?.error" class="error mt-3">上次任务执行：{{ profileView.status.error }}</p>
-      <p v-if="profileError" class="error mt-3">{{ profileError }}</p>
-      </div>
-      <template #footer><div class="settings-page flex justify-between w-full">
-        <ActionButton action="refresh" label="更新画像" :loading="profileRefreshing" :disabled="busy" @click="rebuildProfile" />
-        <div class="toolbar ml-auto"><ActionButton action="close" label="关闭画像" :disabled="busy" @click="profileOpen = false" /><ActionButton v-if="profileView?.profile" action="save" label="保存画像" :disabled="busy" @click="saveProfile" /></div>
-      </div></template>
-    </OptionDialog>
+    <UserPortraitDialog v-model="profileText" :open="profileOpen"
+      :user="profileView?.profile?.account ?? { name: '', username: profileWorkflow?.usernames[0] ?? '', bio: '' }"
+      :evidence="profileView?.evidence ?? []" :busy="busy" :updating="profileRefreshing" :saving="profileSaving"
+      :can-save="!!profileView?.profile && profileText !== readProfileText(profileView)" :error="profileError"
+      @close="profileOpen = false" @refresh="rebuildProfile" @save="saveProfile" />
   </section>
 </template>
 <script setup lang="ts">
@@ -252,6 +236,7 @@ import type {
 } from "@fast-social/contracts";
 import ToggleSwitch from "../../../../components/ui/ToggleSwitch.vue";
 import OptionDialog from "../OptionDialog.vue";
+import UserPortraitDialog from "./UserPortraitDialog.vue";
 import { requestLocalService } from "../../../../common/local-service";
 import { confirmOperation } from '../../../../components/ui/confirm-operation';
 import { useServerAdminContext } from "../../use-server-admin";
@@ -271,11 +256,20 @@ const detailsOpen = ref(false),
 const accountName = (id: string) =>
   id === RANDOM_WORKFLOW_ACCOUNT ? '随机账号' : settings.value?.accounts.find((a) => a.id === id)?.name ?? "账号已删除";
 const runs = ref<Record<string, WorkflowRun>>({});
+function lastExecutionTime(workflow: Workflow): string {
+  const value = runs.value[workflow.id]?.finishedAt ?? workflow.lastCheckedAt;
+  if (!value) return '尚未执行';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '时间未知' : date.toLocaleString('zh-CN', {
+    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+}
 const profileOpen = ref(false), profileWorkflow = ref<Workflow | null>(null), profileView = ref<AccountProfileView | null>(null), profileText = ref(''), profileError = ref('');
-const profileRefreshing = ref(false);
-function readProfileText(view: AccountProfileView) {
+const profileRefreshing = ref(false), profileSaving = ref(false);
+function readProfileText(view: AccountProfileView | null) {
+  if (view?.profile?.portraitText !== undefined) return view.profile.portraitText;
   const labels = { background: '背景', topics: '主题', language: '用语', recent: '近况' };
-  return (Object.keys(labels) as (keyof typeof labels)[]).flatMap(key => view.profile?.memory[key] ? [`${labels[key]}：${view.profile.memory[key]!.text}`] : []).join('\n');
+  return (Object.keys(labels) as (keyof typeof labels)[]).flatMap(key => view?.profile?.memory[key] ? [`${labels[key]}：${view.profile.memory[key]!.text}`] : []).join('\n');
 }
 async function openProfile(w: Workflow) {
   await perform(async () => {
@@ -284,18 +278,19 @@ async function openProfile(w: Workflow) {
   });
 }
 async function saveProfile() {
-  if (!profileWorkflow.value) return;
-  busy.value = true; profileError.value = '';
+  if (!profileWorkflow.value || busy.value) return;
+  profileSaving.value = true; busy.value = true; profileError.value = '';
   try {
     profileView.value = await requestLocalService<AccountProfileView>(`/api/workflows/${profileWorkflow.value.id}/profile`, { method: 'PUT', body: { text: profileText.value } });
     profileText.value = readProfileText(profileView.value); showNotice('画像已保存');
   } catch (e) { profileError.value = e instanceof Error ? e.message : String(e); }
-  finally { busy.value = false; }
+  finally { busy.value = false; profileSaving.value = false; }
 }
 async function rebuildProfile() {
   if (!profileWorkflow.value || busy.value) return;
   const workflow = profileWorkflow.value;
   if (!await confirmOperation({title: '确认更新画像', message: `使用「${accountName(workflow.accountId)}」抓取 @${workflow.usernames[0]} 的 Profile 和近期 Post，并调用 AI 重新构建画像。是否继续？`})) return;
+  if (busy.value || !profileOpen.value || profileWorkflow.value?.id !== workflow.id) return;
   busy.value = true; profileRefreshing.value = true; profileError.value = '';
   try {
     profileView.value = await requestLocalService<AccountProfileView>(`/api/workflows/${workflow.id}/profile/refresh`, { method: 'POST' });

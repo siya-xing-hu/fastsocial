@@ -17,7 +17,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import {
-  ArrowDown, ArrowLeft, ArrowUp, Bell, Braces, Check, ClipboardPenLine, Copy,
+  ArrowDown, ArrowLeft, ArrowUp, Bell, Braces, Check, ChevronLeft, ChevronRight, ClipboardPenLine, Copy,
   FileText, FlaskConical, History, Loader2, MessageSquare, MoreHorizontal, Pencil, Play, Plus,
   RefreshCw, RotateCcw, Save, Send, Settings2, Square, Trash2, UserRound, UserRoundPlus, UserRoundMinus, X,
 } from "lucide-vue-next";
@@ -26,6 +26,7 @@ const icons = {
   add: Plus, edit: Pencil, delete: Trash2, test: FlaskConical, details: FileText,
   refresh: RefreshCw, run: Play, save: Save, confirm: Check, cancel: X, close: X, back: ArrowLeft,
   reset: RotateCcw, copy: Copy, format: Braces, up: ArrowUp, down: ArrowDown,
+  previous: ChevronLeft, next: ChevronRight,
   fill: ClipboardPenLine, send: Send, settings: Settings2, chat: MessageSquare, history: History,
   profile: UserRound, follow: UserRoundPlus, unfollow: UserRoundMinus, reply: MessageSquare, notify: Bell, stop: Square, more: MoreHorizontal,
 };

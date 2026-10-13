@@ -112,6 +112,25 @@ export class WorkflowRepository {
         db.exec('COMMIT');
       } catch (error) { db.exec('ROLLBACK'); throw error; }
     }
+    if (!db.prepare("SELECT key FROM settings WHERE key='workflow_posts_only_cursor_v1'").get()) {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        // The old high-water mark mixed Post and Reply IDs. Recover only evidenced,
+        // processed original posts; never infer a Post checkpoint from a reply ID.
+        for (const workflow of this.list()) {
+          if (workflow.source !== 'user') continue;
+          const rows = db.prepare(`SELECT p.post_id FROM account_posts p
+            JOIN workflow_seen s ON s.post_id=p.post_id
+            WHERE s.workflow_id=? AND json_extract(p.value,'$.author')=? COLLATE NOCASE
+            AND json_extract(p.value,'$.type')='post'`).all(workflow.id, workflow.usernames[0]) as { post_id: string }[];
+          const ids = rows.map(row => row.post_id).filter(id => /^\d+$/.test(id));
+          const lastSeenPostId = ids.sort((a, b) => BigInt(a) < BigInt(b) ? -1 : BigInt(a) > BigInt(b) ? 1 : 0).at(-1) ?? null;
+          this.write({ ...workflow, lastSeenPostId, postScan: null });
+        }
+        db.prepare("INSERT INTO settings VALUES ('workflow_posts_only_cursor_v1','true')").run();
+        db.exec('COMMIT');
+      } catch (error) { db.exec('ROLLBACK'); throw error; }
+    }
   }
   list(): Workflow[] {
     return (
@@ -132,6 +151,7 @@ export class WorkflowRepository {
       createdAt: current?.createdAt ?? new Date().toISOString(),
       lastCheckedAt: targetChanged ? null : current?.lastCheckedAt ?? null,
       lastSeenPostId: targetChanged ? null : current?.lastSeenPostId ?? null,
+      postScan: targetChanged || current?.accountId !== input.accountId ? null : current?.postScan ?? null,
       lastError: null,
       retryAt: null,
     };

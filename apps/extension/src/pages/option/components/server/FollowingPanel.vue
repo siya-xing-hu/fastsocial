@@ -22,7 +22,7 @@
         <div v-else class="overflow-auto">
           <table class="data-table following-table">
             <thead><tr><th>用户</th><th>我的账号</th><th>AI 画像</th><th>关注状态</th><th class="right">操作</th></tr></thead>
-            <tbody><tr v-for="entry in entries" :key="entryKey(entry)">
+            <tbody><tr v-for="entry in pageEntries" :key="entryKey(entry)">
               <td>
                 <a :href="`https://x.com/${entry.user.username}`" target="_blank" rel="noopener noreferrer"><strong>{{ entry.user.name || entry.user.username }}</strong><div class="muted mt-1">@{{ entry.user.username }}</div></a>
                 <div class="muted mt-1">{{ sourceLabels[entry.source] }}<template v-if="entry.followedAt"> · {{ date(entry.followedAt) }}</template></div>
@@ -46,6 +46,19 @@
             </tr></tbody>
           </table>
         </div>
+        <footer v-if="entries.length" class="following-pagination">
+          <span class="muted" role="status">第 {{ (page - 1) * pageSize + 1 }}–{{ Math.min(page * pageSize, entries.length) }} 条，共 {{ entries.length }} 条</span>
+          <div class="toolbar">
+            <select v-model.number="pageSize" class="input following-page-size" aria-label="每页记录数" :disabled="busy">
+              <option :value="20">20 条 / 页</option>
+              <option :value="50">50 条 / 页</option>
+              <option :value="100">100 条 / 页</option>
+            </select>
+            <ActionButton action="previous" label="上一页" :disabled="busy || page <= 1" @click="page--" />
+            <span class="muted whitespace-nowrap" aria-label="当前页码">{{ page }} / {{ pageCount }}</span>
+            <ActionButton action="next" label="下一页" :disabled="busy || page >= pageCount" @click="page++" />
+          </div>
+        </footer>
       </article>
     </template>
     <OptionDialog :open="adding" title="添加关注" :close-disabled="busy" @close="adding = false">
@@ -62,19 +75,10 @@
       <p v-if="dialogError" class="error mt-3">{{ dialogError }}</p>
       <template #footer><div class="toolbar justify-end"><ActionButton action="cancel" label="返回" :disabled="busy" @click="removeEntry = null" /><ActionButton action="unfollow" label="取消关注" :loading="busy" @click="unfollow" /></div></template>
     </OptionDialog>
-    <OptionDialog :open="!!detail" title="用户画像" @close="detailId = ''">
-      <template v-if="detail"><strong>{{ detail.user.name }} · @{{ detail.user.username }}</strong><p class="muted mt-2">我的账号：{{ detail.account.name }} · @{{ detail.account.username }}</p><p class="muted mt-3 whitespace-pre-line">{{ detail.user.bio || '暂无简介' }}</p>
-        <h3 class="mt-5 mb-2">AI 画像</h3><p class="whitespace-pre-line">{{ detail.summary || summaryLabels[detail.summaryStatus] }}</p>
-        <p v-if="detail.summary && summaryPending(detail)" class="muted mt-3" role="status">{{ summaryLabels[detail.summaryStatus] }}</p>
-        <p v-if="detail.summaryError" class="error mt-3">{{ detail.summaryError }}</p>
-        <p v-if="summaryRequestError" class="error mt-3" role="alert">{{ summaryRequestError }}</p>
-        <p v-if="detail.summaryUpdatedAt" class="muted mt-3">画像更新于 {{ date(detail.summaryUpdatedAt) }}</p>
-        <p class="muted mt-2">{{ detail.checkedAt ? `关系核对于 ${date(detail.checkedAt)}` : '关注关系尚未核对' }}</p>
-      </template>
-      <template #footer><div v-if="detail" class="toolbar justify-end">
-        <ActionButton action="refresh" label="更新画像" :loading="summarySubmitting === entryKey(detail) || summaryPending(detail)" :disabled="busy" @click="updateSummary(detail)" />
-      </div></template>
-    </OptionDialog>
+    <UserPortraitDialog v-if="detail" v-model="summaryText" :open="!!detailId" :user="detail.user"
+      :evidence="detail.summaryEvidence ?? []" :busy="busy" :updating="summarySubmitting === entryKey(detail) || summaryPending(detail)"
+      :saving="summarySaving" :can-save="summaryText !== detail.summary" :error="summaryRequestError || detail.summaryError || ''"
+      @close="detailId = ''" @refresh="updateSummary(detail)" @save="saveSummary(detail)" />
   </section>
 </template>
 <script setup lang="ts">
@@ -83,16 +87,23 @@ import type { FollowingEntry, ManagedAccount } from '@fast-social/contracts';
 import ActionButton from '../../../../components/ui/ActionButton.vue';
 import { confirmOperation } from '../../../../components/ui/confirm-operation';
 import OptionDialog from '../OptionDialog.vue';
+import UserPortraitDialog from './UserPortraitDialog.vue';
 import { requestLocalService } from '../../../../common/local-service';
 import { useServerAdminContext } from '../../use-server-admin';
 const { settings, showNotice } = useServerAdminContext();
 type FollowingRow = FollowingEntry & { account: Pick<ManagedAccount, 'id' | 'name' | 'username'> };
 const accounts = computed(() => settings.value?.accounts?.filter(a => a.actorId) ?? []);
 const accountId = ref(''), search = ref(''), entries = ref<FollowingRow[]>([]), loading = ref(false), busy = ref(false), error = ref('');
+const page = ref(1), pageSize = ref(20);
+const pageCount = computed(() => Math.max(1, Math.ceil(entries.value.length / pageSize.value)));
+const pageEntries = computed(() => entries.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value));
+watch(pageSize, () => { page.value = 1; });
+watch(pageCount, count => { page.value = Math.min(page.value, count); });
 const adding = ref(false), addAccountId = ref(''), username = ref(''), dialogError = ref(''), removeEntry = ref<FollowingRow|null>(null), detailId = ref('');
 const entryKey = (entry: FollowingRow) => `${entry.account.id}:${entry.id}`;
 const detail = computed(() => entries.value.find(entry => entryKey(entry) === detailId.value));
 const summarySubmitting = ref(''), summaryRequestError = ref('');
+const summaryText = ref(''), summaryBaseline = ref(''), summarySaving = ref(false), refreshDraft = ref('');
 const summaryPending = (entry: FollowingRow) => entry.summaryStatus === 'pending' || entry.summaryStatus === 'running';
 const statusLabels = { following: '已关注', not_following: '未关注', pending: '处理中', uncertain: '待核对' };
 const summaryLabels = { pending: '画像待生成', running: 'AI 正在生成画像…', failed: '画像生成失败，可查看详情后重试', done: '暂无画像' };
@@ -120,11 +131,16 @@ async function load() {
 }
 watch([accounts, accountId], () => {
   if (accountId.value && !accounts.value.some(a => a.id === accountId.value)) { accountId.value = ''; return; }
-  generation++; entries.value = []; detailId.value = ''; removeEntry.value = null; adding.value = false; error.value = ''; void load();
+  generation++; page.value = 1; entries.value = []; detailId.value = ''; removeEntry.value = null; adding.value = false; error.value = ''; void load();
 }, {immediate:true});
-watch(search, () => { generation++; clearTimeout(timer); clearTimeout(searchTimer); searchTimer = setTimeout(load, 250); });
+watch(search, () => { generation++; page.value = 1; clearTimeout(timer); clearTimeout(searchTimer); searchTimer = setTimeout(load, 250); });
 watch(removeEntry, () => { dialogError.value = ''; });
-watch(detailId, () => { summaryRequestError.value = ''; });
+watch(() => [detailId.value, detail.value?.summary, detail.value?.summaryStatus] as const, ([id, text, status], [previousId]) => {
+  if (id !== previousId) { summaryText.value = text ?? ''; summaryRequestError.value = ''; refreshDraft.value = ''; }
+  else if (summaryText.value === summaryBaseline.value || (refreshDraft.value === id && status === 'done')) summaryText.value = text ?? '';
+  summaryBaseline.value = text ?? '';
+  if (status === 'done' || status === 'failed') refreshDraft.value = '';
+});
 onUnmounted(() => { disposed = true; generation++; clearTimeout(timer); clearTimeout(searchTimer); });
 function openAdd(value = '', owner = accountId.value) {
   username.value = value; addAccountId.value = owner || (accounts.value.length === 1 ? accounts.value[0].id : '');
@@ -153,16 +169,34 @@ async function action(entry: FollowingRow, operation: 'refresh'|'summary') {
   if (!await confirmOperation({title: operation === 'summary' ? '确认更新画像' : '确认核对关注关系', message: operation === 'summary'
     ? `使用「${entry.account.name} · @${entry.account.username}」读取 @${entry.user.username} 的 Profile 和近期 Post，调用 AI 重新生成画像。是否继续？`
     : `使用「${entry.account.name} · @${entry.account.username}」读取 @${entry.user.username} 的最新 Profile，核对关注关系。是否继续？`})) return;
-  if (busy.value) return;
+  if (busy.value || (operation === 'summary' && (detailId.value !== entryKey(entry) || !detail.value || summaryPending(detail.value)))) return;
   busy.value = true; error.value = '';
   if (operation === 'summary') { summarySubmitting.value = entryKey(entry); summaryRequestError.value = ''; }
-  try { await requestLocalService(`${base(entry.account.id)}/${entry.id}/${operation}`, {method:'POST'}); await load(); }
+  try {
+    await requestLocalService(`${base(entry.account.id)}/${entry.id}/${operation}`, {method:'POST'});
+    if (operation === 'summary') refreshDraft.value = entryKey(entry);
+    await load();
+  }
   catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     if (operation === 'summary' && detailId.value === entryKey(entry)) summaryRequestError.value = message;
     else error.value = message;
   }
   finally { busy.value = false; if (operation === 'summary') summarySubmitting.value = ''; }
+}
+async function saveSummary(entry: FollowingRow) {
+  if (busy.value || summaryPending(entry)) return;
+  busy.value = true; summarySaving.value = true; summaryRequestError.value = '';
+  const text = summaryText.value;
+  try {
+    const saved = await requestLocalService<FollowingEntry>(`${base(entry.account.id)}/${entry.id}/summary`, {method: 'PUT', body: {text}});
+    generation++;
+    entries.value = entries.value.map(row => entryKey(row) === entryKey(entry) ? {...saved, account: entry.account} : row);
+    summaryText.value = summaryBaseline.value = saved.summary;
+    showNotice('画像已保存');
+    await load();
+  } catch (e) { summaryRequestError.value = e instanceof Error ? e.message : String(e); }
+  finally { busy.value = false; summarySaving.value = false; }
 }
 const refreshRelation = (entry: FollowingRow) => action(entry, 'refresh');
 const updateSummary = (entry: FollowingRow) => action(entry, 'summary');
@@ -172,6 +206,8 @@ const updateSummary = (entry: FollowingRow) => action(entry, 'summary');
 .following-account-filter { width:auto; max-width:100%; font-weight:400; }
 .following-search { flex:1; min-width:180px; max-width:340px; font-weight:400; }
 .following-table { min-width:860px; }
+.following-pagination { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:12px 18px; border-top:1px solid #e8edf5; }
+.following-page-size { width:auto; }
 .portrait-cell { width:34%; max-width:420px; }
 .portrait-excerpt { font-size:12px; line-height:1.7; white-space:pre-line; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
 </style>

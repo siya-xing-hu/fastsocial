@@ -59,7 +59,7 @@ export class XClient {
       surface === "replies" ? X_OPERATIONS.userReplies : X_OPERATIONS.userTweets, {
         userId: account.id, count: 40, includePromotedContent: false,
         withCommunity: true, withVoice: true, withQuickPromoteEligibilityTweetFields: false, ...(cursor ? { cursor } : {}),
-      }, `https://x.com/${encodeURIComponent(account.username)}/with_replies`, id), account.username), cookieId);
+      }, `https://x.com/${encodeURIComponent(account.username)}${surface === 'replies' ? '/with_replies' : ''}`, id), account.username), cookieId);
   }
 
   private async withCookie<T>(action: (cookie: string, accountId: string) => Promise<T>, cookieId?: string): Promise<T> {

@@ -102,9 +102,10 @@ test("sidebar auto-routing and AI tests recover from truncated provider response
       assert.equal(body.max_tokens, classificationCalls === 1 ? 4096 : 8192);
     }
     if (connectionTest) testCalls++;
-    if ((classification && classificationCalls === 1) || (connectionTest && testCalls === 1))
-      return Response.json({ choices: [{ finish_reason: 'length', message: { content: '' } }] });
-    return Response.json({ choices: [{ finish_reason: 'stop', message: { content: classification ? 'reply' : connectionTest ? 'OK' : 'A complete reply.' } }] });
+    assert.equal(body.stream, true);
+    const truncated = (classification && classificationCalls === 1) || (connectionTest && testCalls === 1);
+    const content = truncated ? 'partial' : classification ? 'reply' : connectionTest ? 'OK' : 'A complete reply.';
+    return new Response(`data: ${JSON.stringify({choices: [{delta: {content}, finish_reason: truncated ? 'length' : 'stop'}]})}\n\ndata: [DONE]\n\n`, {headers: {'content-type': 'text/event-stream'}});
   } });
   try {
     await app.inject({ method: 'PUT', url: '/api/settings', payload: { ai: { defaultProvider: 'fixture:model', services: [{ id: 'fixture', name: 'Fixture', endpoint: 'https://fixture.invalid/chat', apiKey: 'fixture', enabled: true, models: [{ name: 'model' }] }] } } });

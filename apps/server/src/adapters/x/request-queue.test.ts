@@ -9,7 +9,7 @@ import { SettingsRepository } from '../../repositories/settings-repository.ts';
 import { createApp } from '../../app.ts';
 import type { TraceEntry } from '../../observability/trace.ts';
 
-test('one queue serializes concurrent operations and waits 30 seconds after completion, including failures', async () => {
+test('one queue serializes concurrent operations and waits 10 seconds after completion, including failures', async () => {
   let now = 0;
   const starts: number[] = [], waits: number[] = [];
   const queue = new XRequestQueue({ now: () => now, wait: async ms => { waits.push(ms); now += ms; } });
@@ -23,8 +23,8 @@ test('one queue serializes concurrent operations and waits 30 seconds after comp
   assert.deepEqual(starts, [0]);
   release();
   assert.deepEqual((await finished).map(result => result.status), ['fulfilled', 'rejected', 'fulfilled']);
-  assert.deepEqual(starts, [0, 30_700, 60_800]);
-  assert.deepEqual(waits, [30_000, 30_000]);
+  assert.deepEqual(starts, [0, 10_700, 20_800]);
+  assert.deepEqual(waits, [10_000, 10_000]);
   queue.stop();
 });
 
@@ -37,11 +37,11 @@ test('queue cancellation and preflight failure send nothing and do not reserve a
   assert.equal(starts, 0); assert.equal(quota, 0);
   await assert.rejects(queue.run(async () => { starts++; }, () => { throw new Error('quota exhausted'); }), /quota exhausted/);
   await queue.run(async () => { starts++; });
-  assert.equal(now, 30_000); assert.equal(starts, 1);
+  assert.equal(now, 10_000); assert.equal(starts, 1);
   queue.stop();
 });
 
-test('shutdown cancels the wait and every queued request without spending quota or waiting 30 seconds', async () => {
+test('shutdown cancels the wait and every queued request without spending quota or waiting 10 seconds', async () => {
   const queue = new XRequestQueue();
   let sends = 0, quota = 0;
   await queue.run(async () => { sends++; });
@@ -80,7 +80,7 @@ test('reader and action clients share spacing across accounts; Cookie edits and 
   const reader = new XClient(settings, queue, mock), actions = new OutreachXClient(settings, queue, mock);
   try {
     await withQueuedXRequests(() => Promise.all([reader.fetchHomePosts(a.id), actions.reply(actions.identity(b.id), '100', 'Reply')]));
-    assert.deepEqual(calls.map(call => call.at), [0, 30_500]);
+    assert.deepEqual(calls.map(call => call.at), [0, 10_500]);
     assert.match(calls[0]!.cookie, /fake-a/); assert.match(calls[1]!.cookie, /fake-b/);
     assert.equal(settings.configuration.requestLimits.view(b.id).used.reply, 1);
     // The next read is queued with A's old credentials. Changing them must not send those credentials.
@@ -98,7 +98,7 @@ test('reader and action clients share spacing across accounts; Cookie edits and 
     assert.equal(calls.length, 2);
     assert.equal(settings.configuration.requestLimits.view(a.id).used.home, 1);
     assert.deepEqual(settings.configuration.requestLimits.view(b.id).used, used);
-    assert.equal(now, 61_000); // Neither cancelled request adds a cooldown.
+    assert.equal(now, 21_000); // Neither cancelled request adds a cooldown.
   } finally { queue.stop(); db.close(); }
 });
 
@@ -110,7 +110,7 @@ test('manual account tests bypass the queue while workflow reads and writes reta
   const app = createApp({ traceSink: entry => logs.push(structuredClone(entry)), xRequestQueue: queue, fetchImpl: async (url, init) => {
     if (String(url).startsWith('https://fixture.invalid/')) {
       calls.push({ name: 'AI', at: now });
-      return Response.json({ choices: [{ message: { content: JSON.stringify({ decisions: [{ postId: '100', matched: true, message: 'match' }] }) } }] });
+      return Response.json({ choices: [{ message: { content: JSON.stringify({ matches: [{ postId: '100', message: 'match' }] }) } }] });
     }
     assert.ok(String(url).startsWith('https://x.com/'));
     const name = new URL(String(url)).pathname.split('/').at(-1)!;
@@ -136,7 +136,7 @@ test('manual account tests bypass the queue while workflow reads and writes reta
     } while (run.status === 'running' && Date.now() < deadline);
     assert.equal(run.status, 'done', run.error);
     assert.deepEqual(calls.filter(call => call.name !== 'AI'), [
-      { name: 'HomeTimeline', at: 0 }, { name: 'HomeTimeline', at: 200 }, { name: 'CreateTweet', at: 30_400 },
+      { name: 'HomeTimeline', at: 0 }, { name: 'HomeTimeline', at: 200 }, { name: 'CreateTweet', at: 10_400 },
     ]);
     assert.equal(calls.find(call => call.name === 'AI')?.at, 400);
     const chain = logs.filter(entry => entry.context.runId === run.id);
@@ -171,7 +171,7 @@ test('direct requests bypass a busy task queue but keep guards, quotas and shutd
     await assert.rejects(withXRequestGuard(() => { throw new Error('cancelled'); }, () => queue.request(async () => { sends++; })), /cancelled/);
     assert.equal(sends, 2);
     release.resolve(); await task;
-    assert.equal(now, 30_000); assert.equal(sends, 3); assert.equal(checks, 2);
+    assert.equal(now, 10_000); assert.equal(sends, 3); assert.equal(checks, 2);
     queue.stop();
     await assert.rejects(queue.request(async () => { sends++; }), /服务正在停止/);
     assert.equal(sends, 3);

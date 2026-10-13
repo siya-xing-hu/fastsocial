@@ -1,4 +1,5 @@
 import type { SocialAccount } from './account-memory.ts';
+import type { SocialPost } from './social.ts';
 
 export interface FollowingEntry {
   id: string;
@@ -12,6 +13,7 @@ export interface FollowingEntry {
   updatedAt: string;
   error: string | null;
   summary: string;
+  summaryEvidence?: SocialPost[];
   summaryStatus: 'pending' | 'running' | 'done' | 'failed';
   summaryError: string | null;
   summaryUpdatedAt: string | null;

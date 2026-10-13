@@ -20,7 +20,7 @@ function fixture(failSummary = false) {
     async follow(identity:OutreachIdentity){calls.push('follow:'+identity.actorId);state.set(identity.actorId,true);if(failFollow)throw new Error('connection lost');return {following:true,followedBy:false};},
     async unfollow(identity:OutreachIdentity){calls.push('unfollow:'+identity.actorId);state.set(identity.actorId,false);return {following:false,followedBy:false};},
   };
-  const repo=new FollowingRepository(db), service=new FollowingService(repo,settings,x,async()=>{if(failSummary)throw new Error('AI unavailable');return '主题：开源工具\n近况：发布了新的效率工具';});
+  const repo=new FollowingRepository(db), service=new FollowingService(repo,settings,x,async()=>{if(failSummary)throw new Error('AI unavailable');return { summary: '主题：开源工具\n近况：发布了新的效率工具', summaryEvidence: [] };});
   return {db,settings,a,b,state,calls,x,repo,service,fail:()=>{failFollow=true;}};
 }
 test('a deferred portrait does not overwrite a manual update completed before the workflow finishes', async () => {
@@ -109,7 +109,7 @@ test('automatic follow skips existing relations and manual opt-outs across resta
     const user = (await f.x.profile(f.x.identity(f.a.id), 'target')).account;
     f.repo.save({ ...f.repo.create('1', user, 'manual'), status: 'not_following' });
     const restarted = new FollowingRepository(f.db);
-    const service = new FollowingService(restarted, f.settings, f.x, async () => 'summary');
+    const service = new FollowingService(restarted, f.settings, f.x, async () => ({ summary: 'summary', summaryEvidence: [] }));
     const original = f.x.profile;
     let reads = 0;
     f.x.profile = async (...args) => { reads++; return original(...args); };
@@ -149,4 +149,51 @@ test('an unsent quota-limited first follow cannot create a false manual opt-out'
     assert.equal((await f.service.follow(f.x.identity(f.a.id), '9', 'target')).created, true);
     assert.deepEqual(f.calls, ['follow:1']);
   } finally { await f.service.stop(); f.db.close(); }
+});
+
+
+test('manual following portrait saves are local, actor-scoped and preserve sources without a length cap', async () => {
+  const f = fixture(), app = Fastify(); registerFollowingRoutes(app, f.service);
+  try {
+    const user = (await f.x.profile(f.x.identity(f.a.id), 'target')).account;
+    const evidence = [{id: '100', platform: 'x' as const, author: 'target', text: 'Source post', type: 'post' as const, createdAt: '2026-10-13T00:00:00Z', url: 'https://x.com/target/status/100'}];
+    const row = f.repo.save({...f.repo.create('1', user, 'manual'), summaryStatus: 'done', summary: 'Old portrait', summaryEvidence: evidence});
+    f.x.profile = async () => { throw new Error('Must not fetch profile for a local edit'); };
+    const text = Array.from({length: 8}, (_, i) => `第 ${i} 段：${'开发工具。'.repeat(20)}`).join('\n\n');
+    const url = `/api/accounts/${f.a.id}/following/${row.id}/summary`;
+    assert.equal((await app.inject({method: 'PUT', url, payload: {text: 123}})).statusCode, 500);
+    assert.equal((await app.inject({method: 'PUT', url: `/api/accounts/${f.b.id}/following/${row.id}/summary`, payload: {text}})).statusCode, 500);
+    const saved = await app.inject({method: 'PUT', url, payload: {text}});
+    assert.equal(saved.statusCode, 200); assert.equal(saved.json().data.summary, text);
+    assert.deepEqual(saved.json().data.summaryEvidence, evidence);
+    assert.equal(new FollowingRepository(f.db).get('1', row.id)?.summary, text);
+    const cleared = f.service.editSummary(f.a.id, row.id, '');
+    assert.equal(cleared.summary, ''); assert.deepEqual(cleared.summaryEvidence, evidence);
+    for (const status of ['pending', 'running'] as const) {
+      f.repo.save({...cleared, summaryStatus: status});
+      assert.throws(() => f.service.editSummary(f.a.id, row.id, text), /正在更新/);
+      assert.equal(f.repo.get('1', row.id)?.summary, '');
+    }
+    assert.deepEqual(f.calls, []);
+  } finally { await app.close(); await f.service.stop(); f.db.close(); }
+});
+
+test('following AI portraits persist cited posts and a failed refresh retains both text and evidence', async () => {
+  const f = fixture();
+  let fail = false;
+  const evidence = [{id: '100', platform: 'x' as const, author: 'target', text: 'Source', type: 'post' as const, createdAt: '', url: 'https://x.com/target/status/100'}];
+  const service = new FollowingService(f.repo, f.settings, f.x, async () => {
+    if (fail) throw new Error('AI unavailable');
+    return {summary: '长画像'.repeat(200), summaryEvidence: evidence};
+  });
+  try {
+    const entry = await service.add(f.a.id, 'target');
+    for (let i = 0; i < 30 && service.list(f.a.id)[0]?.summaryStatus !== 'done'; i++) await new Promise(resolve => setImmediate(resolve));
+    const saved = service.list(f.a.id)[0]!;
+    assert.equal(saved.summary, '长画像'.repeat(200)); assert.deepEqual(saved.summaryEvidence, evidence);
+    fail = true; service.enqueue(f.a.id, entry.id, {manual: true});
+    for (let i = 0; i < 30 && service.list(f.a.id)[0]?.summaryStatus !== 'failed'; i++) await new Promise(resolve => setImmediate(resolve));
+    const after = service.list(f.a.id)[0]!;
+    assert.equal(after.summaryStatus, 'failed'); assert.equal(after.summary, saved.summary); assert.deepEqual(after.summaryEvidence, evidence);
+  } finally { await service.stop(); await f.service.stop(); f.db.close(); }
 });

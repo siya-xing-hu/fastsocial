@@ -3,7 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { randomUUID } from 'node:crypto';
 import { trace, withTrace, errorDetails } from '../../observability/trace.ts';
 
-export const X_REQUEST_INTERVAL_MS = 30_000;
+export const X_REQUEST_INTERVAL_MS = 10_000;
 const guards = new AsyncLocalStorage<() => void>();
 const queuedRequests = new AsyncLocalStorage<boolean>();
 

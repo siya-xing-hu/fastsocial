@@ -8,7 +8,8 @@ import { WorkflowRepository } from "./repository.ts";
 import { WorkflowService } from "./service.ts";
 import { registerWorkflowRoutes, validateWorkflow } from "./routes.ts";
 import { RANDOM_WORKFLOW_ACCOUNT, type SocialPost, type WorkflowInput } from "@fast-social/contracts";
-import type { AIGateway } from '../ai/ai-gateway.ts';
+import { AIGateway } from '../ai/ai-gateway.ts';
+import { OpenAICompatibleClient } from '../ai/openai-compatible-client.ts';
 import { WorkflowMatcher } from './matcher.ts';
 import { AccountRequestLimits, AccountRequestLimitError } from '../configuration/request-limits.ts';
 import { DEFAULT_ACCOUNT_DAILY_LIMITS } from '@fast-social/contracts';
@@ -104,7 +105,7 @@ for (const failReply of [false, true]) test(`portrait reads start after workflow
     profile: async () => xCall('profile', () => ({ account: { id: '2', username: 'author', name: 'Author', bio: '', fetchedAt: new Date().toISOString() }, following, followedBy: false })),
     follow: async () => xCall('follow', () => { following = true; return { following: true, followedBy: false }; }),
     unfollow: async () => { throw new Error('unexpected unfollow'); },
-  }, async () => { events.push(`portrait-ai:${now}`); return '主题：工具'; });
+  }, async () => { events.push(`portrait-ai:${now}`); return { summary: '主题：工具', summaryEvidence: [] }; });
   const service = new WorkflowService({ ...f.deps,
     logger: new ExecutionLogger(entry => { logs.push(entry); if (entry.event === 'workflow.finish') events.push(`finish:${now}`); }),
     deferPortraits: followingService.deferPortraits.bind(followingService),
@@ -122,8 +123,8 @@ for (const failReply of [false, true]) test(`portrait reads start after workflow
       await new Promise(resolve => setImmediate(resolve));
     assert.equal(service.runs()[0]?.status, failReply ? 'failed' : 'done');
     assert.equal(followingService.list(w.accountId)[0]?.summaryStatus, 'done');
-    assert.deepEqual(events, ['home:0', 'match-ai:0', 'profile:30000', 'follow:60000', 'reply-ai:60000',
-      'reply:90000', 'finish:90000', 'profile:120000', 'portrait-ai:120000']);
+    assert.deepEqual(events, ['home:0', 'match-ai:0', 'profile:10000', 'follow:20000', 'reply-ai:20000',
+      'reply:30000', 'finish:30000', 'profile:40000', 'portrait-ai:40000']);
     assert.ok(logs.some(entry => entry.event === 'portrait.deferred'));
     assert.ok(logs.findIndex(entry => entry.event === 'portrait.start') > logs.findIndex(entry => entry.event === 'workflow.finish'));
     assert.equal(logs.find(entry => entry.event === 'portrait.done')?.context.runId, service.runs()[0]?.id);
@@ -178,7 +179,7 @@ test('concurrent workflows share tracked follow ownership and only its creator r
     follow: async () => { following = true; followWrites++; return { following, followedBy: false }; },
     unfollow: async () => ({ following: false, followedBy: false }),
   };
-  const tracked = new FollowingService(followingRepo, f.settings, social, async () => 'portrait');
+  const tracked = new FollowingService(followingRepo, f.settings, social, async () => ({ summary: 'portrait', summaryEvidence: [] }));
   const service = new WorkflowService({ ...f.deps, x: { ...f.deps.x, follow: tracked.follow.bind(tracked), followSkipReason: tracked.followSkipReason.bind(tracked) } });
   const one = f.repo.save(f.input), two = f.repo.save(f.input);
   try {
@@ -283,7 +284,7 @@ test('live batch progress reports all AI decisions before actions and retains co
   const matcher = new WorkflowMatcher({ async complete(_provider, messages) {
     if (++aiCalls === 1) { aiStarted(); await aiGate; }
     const items = JSON.parse(messages[1]!.content).posts;
-    return JSON.stringify({ decisions: items.map((post: { postId: string }) => ({ postId: post.postId, matched: ['300', '334'].includes(post.postId), message: 'test' })) });
+    return JSON.stringify({ matches: items.filter((post: { postId: string }) => ['300', '334'].includes(post.postId)).map((post: { postId: string }) => ({ postId: post.postId, message: 'test' })) });
   } } as AIGateway);
   const service = new WorkflowService({ ...f.deps, x: { ...f.deps.x, home: async () => entries },
     evaluateBatch: (condition, posts, ensureCurrent, report) => matcher.evaluate(condition, posts, ensureCurrent, report),
@@ -315,7 +316,7 @@ test('a failed later home batch advances no progress and executes no partial act
   const matcher = new WorkflowMatcher({ async complete(_provider, messages) {
     requests++;
     const input = JSON.parse(messages[1]!.content);
-    return JSON.stringify({ decisions: fail && requests === 2 ? [] : input.posts.map((post: { postId: string }) => ({ postId: post.postId, matched: true, message: '发布了产品' })) });
+    return fail && requests === 2 ? '{"matches":[' : JSON.stringify({ matches: input.posts.map((post: { postId: string }) => ({ postId: post.postId, message: '发布了产品' })) });
   } } as AIGateway);
   const service = new WorkflowService({ ...f.deps, x: { ...f.deps.x, home: async () => entries },
     evaluateBatch: (condition, posts, ensureCurrent) => matcher.evaluate(condition, posts, ensureCurrent) });
@@ -323,7 +324,7 @@ test('a failed later home batch advances no progress and executes no partial act
   try {
     await service.run(w.id);
     assert.equal(requests, 2); assert.equal(service.runs()[0]?.status, 'failed');
-    assert.match(service.runs()[0]!.error!, /遗漏帖子/); assert.equal(f.repo.get(w.id)?.enabled, true);
+    assert.match(service.runs()[0]!.error!, /不是有效 JSON/); assert.equal(f.repo.get(w.id)?.enabled, true);
     assert.equal(f.repo.get(w.id)?.lastSeenPostId, w.lastSeenPostId);
     assert.deepEqual(f.repo.records(w.id), []); assert.ok(!f.calls.includes('notify'));
     assert.ok(entries.every(item => !f.repo.seen(w.id, item.post.id)));
@@ -781,4 +782,44 @@ test("manual run endpoints return promptly, expose progress, and reject missing 
     await service.stop();
     assert.equal((await app.inject({ method: "POST", url: `/api/workflows/${w.id}/run` })).statusCode, 503);
   } finally { release(); await service.stop(); await app.close(); f.db.close(); }
+});
+
+
+for (const failure of ['missing_end', 'malformed', 'disconnect'] as const) test(`streamed home judgments wait for completion and preserve progress on ${failure}`, async () => {
+  const f = fixture(), received = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let broken = true, requests = 0;
+  f.settings.update({ai: {defaultProvider: 'fixture:model', services: [{id: 'fixture', name: 'Fixture', endpoint: 'https://fixture.invalid/chat', apiKey: 'test', models: [{name: 'model'}], enabled: true}]}});
+  const client = new OpenAICompatibleClient(async (_url, init) => {
+    requests++;
+    const body = JSON.parse(String(init?.body)); assert.equal(body.stream, true);
+    const posts = JSON.parse(body.messages[1].content).posts;
+    const content = JSON.stringify({matches: posts.map((p: {postId: string}) => ({postId: p.postId, message: '命中'}))});
+    const encoder = new TextEncoder();
+    return new Response(new ReadableStream({start(c) {
+      c.enqueue(encoder.encode(`data: ${JSON.stringify({choices: [{delta: {content}}]})}\n\n`));
+      received.resolve();
+      void release.promise.then(() => {
+        if (!broken) c.enqueue(encoder.encode('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'));
+        else if (failure === 'malformed') c.enqueue(encoder.encode('data: {invalid}\n\n'));
+        else if (failure === 'disconnect') { c.error(new Error('simulated disconnect')); return; }
+        c.close();
+      });
+    }}), {headers: {'content-type': 'text/event-stream'}});
+  });
+  const matcher = new WorkflowMatcher(new AIGateway(f.settings, client));
+  const service = new WorkflowService({...f.deps, evaluateBatch: (condition, posts, guard, report) => matcher.evaluate(condition, posts, guard, report)});
+  const w = f.repo.save({...f.input, source: 'home', usernames: []});
+  const running = service.run(w.id);
+  try {
+    await received.promise;
+    assert.equal(service.runs()[0]?.checked, 0); assert.deepEqual(f.repo.records(w.id), []);
+    assert.equal(f.repo.seen(w.id, '100'), false); assert.ok(!f.calls.includes('follow'));
+    release.resolve(); await running;
+    assert.equal(service.runs()[0]?.status, 'failed'); assert.equal(service.runs()[0]?.checked, 0);
+    assert.deepEqual(f.repo.records(w.id), []); assert.equal(f.repo.seen(w.id, '100'), false);
+    assert.equal(requests, 1); assert.ok(!f.calls.includes('follow')); assert.ok(!f.calls.includes('reply'));
+    broken = false; await service.run(w.id);
+    assert.equal(service.runs()[0]?.status, 'done'); assert.equal(service.runs()[0]?.completed, 1);
+    assert.equal(requests, 2); assert.equal(f.calls.filter(c => c === 'follow').length, 1); assert.equal(f.calls.filter(c => c === 'reply').length, 1);
+  } finally { release.resolve(); await running; await service.stop(); f.db.close(); }
 });

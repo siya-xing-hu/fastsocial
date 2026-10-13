@@ -52,7 +52,23 @@ test('web timeline pages ignore pinned posts and expose the bottom cursor', asyn
   const page = parseXTimelinePage(payload, 'example');
   assert.ok(!page.posts.some(post => post.id === 'old-pin'));
   assert.equal(page.posts[0]?.id, '200');
+  assert.deepEqual(page.boundaryPostIds, ['200']);
   assert.throws(() => parseXTimelinePage({ data: {} }, 'example'), /结构/);
   const account = parseXAccount({ data: { user: { result: { rest_id: '42', core: { name: 'Example', screen_name: 'example' }, profile_bio: { description: 'developer' } } } } }, 'example');
   assert.equal(account.bio, 'developer');
+});
+
+test('only chronological originals are paging anchors, excluding promoted posts and conversation context', async () => {
+  const { parseXTimelinePage } = await import('./x-parser.ts');
+  const payload = JSON.parse(readFileSync(new URL('./__fixtures__/user-timeline.json', import.meta.url), 'utf8'));
+  const entries = payload.data.user.result.timeline.timeline.instructions[0].entries;
+  const old = structuredClone(entries[0]); old.content.itemContent.tweet_results.result.rest_id = '1';
+  const promoted = structuredClone(old); promoted.entryId = 'promoted-1';
+  const reply = structuredClone(entries[0]);
+  reply.content.itemContent.tweet_results.result.rest_id = '300';
+  reply.content.itemContent.tweet_results.result.legacy.in_reply_to_status_id_str = '200';
+  entries.push(promoted, reply, { content: { items: [{ item: { itemContent: old.content.itemContent } }] } });
+  const page = parseXTimelinePage(payload, 'example');
+  assert.deepEqual(page.boundaryPostIds, ['200']);
+  assert.equal(page.posts.filter(p => p.id === '1').length, 1); // Only the context copy, not the advertisement.
 });

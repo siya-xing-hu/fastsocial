@@ -166,5 +166,16 @@ export function parseXTimelinePage(payload: unknown, username: string): Timeline
   walk(entries, candidate => {
     if (candidate.cursorType === 'Bottom' && typeof candidate.value === 'string') nextCursor = candidate.value;
   });
-  return { posts: parseXTimeline(entries).filter(post => post.author.toLowerCase() === username.toLowerCase()), nextCursor };
+  const regularEntries = entries.filter(value => {
+    const entry = asObject(value), content = asObject(entry?.content);
+    return !String(entry?.entryId ?? '').startsWith('promoted-') && !content?.promotedMetadata
+      && !asObject(content?.itemContent)?.promotedMetadata;
+  });
+  const boundaryPostIds = regularEntries.flatMap(value => {
+    const item = asObject(asObject(asObject(value)?.content)?.itemContent);
+    const tweet = unwrapTweet(asObject(item?.tweet_results)?.result);
+    const post = tweet && mapTweet(tweet);
+    return post?.type === 'post' && post.author.toLowerCase() === username.toLowerCase() ? [post.id] : [];
+  });
+  return { posts: parseXTimeline(regularEntries).filter(post => post.author.toLowerCase() === username.toLowerCase()), nextCursor, boundaryPostIds };
 }

@@ -46,18 +46,14 @@ function harness(posts: SocialPost[]) {
   return { database, monitors, accounts, rule, runner, calls, sent, posts, state, account, memory, close: () => database.close() };
 }
 
-test('cold start learns bio and latest 20 posts once, without notifying history', async () => {
+test('legacy cold start records its baseline without automatic portrait generation', async () => {
   const h = harness(Array.from({ length: 60 }, (_, i) => post(String(i + 1))));
   await h.runner.run(h.rule.id);
-  assert.equal(h.calls.length, 1);
-  assert.equal(h.calls[0]!.posts.length, 20);
-  assert.equal(h.calls[0]!.posts[0]!.id, '41');
-  assert.equal(h.calls[0]!.includeBio, true);
+  assert.equal(h.calls.length, 0); assert.equal(h.accounts.profile(h.account.id), null);
   assert.deepEqual(h.sent, []);
   assert.equal(h.monitors.get(h.rule.id)?.lastSeenPostId, '60');
   await h.runner.run(h.rule.id);
-  assert.equal(h.calls.length, 1);
-  assert.equal(h.state.bioCalls, 1);
+  assert.equal(h.calls.length, 0); assert.equal(h.state.bioCalls, 2);
   h.close();
 });
 
@@ -70,11 +66,11 @@ test('empty initial timeline does not swallow a later new post', async () => {
   h.close();
 });
 
-test('migrated cursor is retained during learning and 85 new posts are paged and batched', async () => {
+test('migrated cursor is retained without automatic learning and 85 new posts are paged and batched', async () => {
   const h = harness(Array.from({ length: 86 }, (_, i) => post(String(i + 1))));
   h.monitors.updateRunState(h.rule.id, { lastSeenPostId: '1' });
   await h.runner.run(h.rule.id);
-  assert.equal(h.state.pages, 4);
+  assert.equal(h.state.pages, 3);
   assert.deepEqual(h.calls.map(call => call.posts.length), [30, 30, 25]);
   assert.equal(h.sent.length, 85);
   assert.equal(h.monitors.get(h.rule.id)?.lastSeenPostId, '86');
@@ -133,13 +129,11 @@ test('AI failure keeps offset; next schedule compensates from the same offset', 
   h.close();
 });
 
-test('failure during initial learning stays a baseline run on the next schedule', async () => {
+test('legacy baseline does not depend on AI being available', async () => {
   const h = harness([post('1'), post('2')]);
   h.state.aiError = true;
-  await assert.rejects(h.runner.run(h.rule.id));
-  assert.equal(h.monitors.get(h.rule.id)?.lastSeenPostId, null);
-  h.state.aiError = false;
   await h.runner.run(h.rule.id);
+  assert.deepEqual(h.calls, []); assert.equal(h.accounts.profile(h.account.id), null);
   assert.deepEqual(h.sent, []);
   assert.equal(h.monitors.get(h.rule.id)?.lastSeenPostId, '2');
   h.close();
@@ -197,6 +191,7 @@ test('fetch failure records phase without changing offset', async () => {
 test('manual correction and clearing are shared, versioned and never relearn old history', async () => {
   const h = harness([post('1')]);
   await h.runner.run(h.rule.id);
+  await h.runner.rebuildUserProfile('example', h.rule.id, 'mock-actor', () => {});
   const edited = await h.runner.editProfile(h.rule.id, '用语：reset 仅在明确讨论额度时指重置。');
   assert.equal(edited.profile?.memory.language?.kind, 'manual');
   await h.runner.editProfile(h.rule.id, '');
