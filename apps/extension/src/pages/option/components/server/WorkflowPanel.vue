@@ -75,7 +75,7 @@
                 </td>
                 <td>
                   <div class="toolbar justify-end">
-                    <ActionButton action="run" :label="`立刻执行一次 ${w.name}`" :disabled="busy || !w.actions.length || runs[w.id]?.status === 'running'" @click="runOnce(w)" :loading="runs[w.id]?.status === 'running'" />
+                    <ActionButton :action="needsRetry(w) ? 'retry' : 'run'" :label="`${needsRetry(w) ? '恢复本轮任务' : '立刻执行一次'} ${w.name}`" :disabled="busy || !w.actions.length || runs[w.id]?.status === 'running'" @click="needsRetry(w) ? retry(w) : runOnce(w)" :loading="runs[w.id]?.status === 'running'" />
                     <ActionButton v-if="w.source === 'user'" action="profile" :label="`查看 @${w.usernames[0]} 的画像`" :disabled="busy" @click="openProfile(w)" />
                     <ActionButton action="edit" :label="`编辑 ${w.name}`" :disabled="busy" @click="edit(w)" /><ActionButton action="details" :label="`查看 ${w.name} 的执行记录`" :disabled="busy" @click="inspect(w)" />
                   </div>
@@ -232,6 +232,7 @@ import type {
   WorkflowInput,
   WorkflowRecord,
   WorkflowRun,
+  WorkflowRetryPlan,
   AccountProfileView,
 } from "@fast-social/contracts";
 import ToggleSwitch from "../../../../components/ui/ToggleSwitch.vue";
@@ -326,12 +327,43 @@ async function pollRuns() {
 }
 async function runOnce(w: Workflow) {
   if (busy.value || !await confirmOperation({title: '确认立即执行', message: workflowEffect(w)})) return;
+  if (busy.value || disposed || runs.value[w.id]?.status === 'running') return;
   await perform(async () => {
     const run = await requestLocalService<WorkflowRun>(`/api/workflows/${w.id}/run`, { method: "POST" });
     runs.value[w.id] = run;
     showNotice("已开始执行，可在记录中查看动作结果");
     schedulePoll();
   });
+}
+function needsRetry(w: Workflow) {
+  return !!w.lastError || ['failed', 'cancelled'].includes(runs.value[w.id]?.status ?? '');
+}
+async function retry(w: Workflow) {
+  if (busy.value || runs.value[w.id]?.status === 'running') return;
+  busy.value = true;
+  try {
+    const plan = await requestLocalService<WorkflowRetryPlan>(`/api/workflows/${w.id}/retry`);
+    const uncertain = plan.records.flatMap(r => r.actions.filter(a => a.status === 'uncertain' && a.type !== 'follow')
+      .map(a => `${labels[a.type]} @${r.post.author}（Post ${r.post.id}）`));
+    const remaining = plan.records.flatMap(r => r.actions.filter(a => a.status !== 'done' && a.status !== 'skipped'));
+    const hasFollow = remaining.some(a => a.type === 'follow');
+    const needsAIReply = w.actions.some(a => a.type === 'reply' && a.mode !== 'text')
+      && remaining.some(a => a.type === 'reply' && !a.replyText);
+    const message = plan.records.length
+      ? `按本轮原执行账号（${[...new Set(plan.records.map(r => r.accountName || accountName(r.accountId || w.accountId)))].join('、')}）继续 ${plan.records.length} 条失败或未执行记录，跳过已完成动作。${hasFollow ? '失败的关注会先核对当前关系；未关注才重新发送。' : ''}${hasFollow || needsAIReply ? '尚未生成的回复或新关注画像可能调用 AI。' : ''}`
+      : plan.analysisComplete ? '本轮动作已完成，将恢复完成状态和监听进度。' : workflowEffect(w);
+    if (!await confirmOperation({ title: uncertain.length ? '核对未发送后重试' : '确认重试', message: [plan.run ? `继续原轮次：已扫描 ${plan.run.scanned} 条，AI 命中 ${plan.run.aiMatched} 条，已完成 ${plan.run.completed} 条。统计继续累计。` : '', message,
+      uncertain.length ? `以下操作结果不确定：\n${uncertain.join('\n')}\n请先在 X 或通知端核对未发送。确认后将重新发送这些未确认动作；如果已经发送，请取消。` : '',
+      plan.restoreEnabled ? '全部重试成功后恢复启用，继续按原间隔运行。' : '成功后清除失败状态，保持当前启用设置。',
+    ].filter(Boolean).join('\n\n') })) return;
+    if (disposed || runs.value[w.id]?.status === 'running') return;
+    const run = await requestLocalService<WorkflowRun>(`/api/workflows/${w.id}/retry`, { method: 'POST', body: {
+      runId: plan.run?.id, revision: plan.revision, configuration: plan.configuration, recordIds: plan.records.map(r => r.id), confirmUncertain: uncertain.length > 0, restoreEnabled: plan.restoreEnabled,
+    } });
+    runs.value[w.id] = run; error.value = '';
+    showNotice('已开始恢复本轮任务'); schedulePoll();
+  } catch (e) { error.value = e instanceof Error ? e.message : String(e); }
+  finally { busy.value = false; }
 }
 function workflowEffect(w: WorkflowInput) {
   return `使用「${accountName(w.accountId)}」抓取${w.source === 'home' ? '首页 Post' : ` @${w.usernames[0]} 的 Post`}，调用 AI 判断命中后执行：${w.actions.map(a => labels[a.type]).join(' → ') || '无动作'}。是否继续？`;

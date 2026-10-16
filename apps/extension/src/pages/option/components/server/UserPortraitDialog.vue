@@ -12,10 +12,7 @@
       </label>
       <details v-if="evidence.length">
         <summary class="muted cursor-pointer">画像依据 · {{ evidence.length }} 条</summary>
-        <div v-for="post in evidence" :key="post.id" class="mt-3">
-          <p class="whitespace-pre-wrap text-sm">{{ post.text }}</p>
-          <a :href="post.url" class="text-xs text-blue-600" target="_blank" rel="noopener noreferrer">查看原帖</a>
-        </div>
+        <PortraitEvidencePost v-for="post in evidence" :key="post.id" :post="post" />
       </details>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
     </div>
@@ -31,6 +28,7 @@
 import type { SocialAccount, SocialPost } from '@fast-social/contracts';
 import ActionButton from '../../../../components/ui/ActionButton.vue';
 import OptionDialog from '../OptionDialog.vue';
+import PortraitEvidencePost from './PortraitEvidencePost.vue';
 defineProps<{
   open: boolean;
   user: Pick<SocialAccount, 'name' | 'username' | 'bio'>;

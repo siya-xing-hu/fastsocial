@@ -20,6 +20,7 @@ export interface OutreachAdapter {
   identity(cookieId: string): OutreachIdentity;
   home(identity: OutreachIdentity, seenPostIds: string[]): Promise<OutreachPost[]>;
   follow(identity: OutreachIdentity, userId: string, username?: string): Promise<OutreachFollowResult>;
+  retryFollow?(identity: OutreachIdentity, userId: string, username: string): Promise<OutreachFollowResult>;
   followSkipReason?(identity: OutreachIdentity, userId: string, username: string, continuingNewFollow?: boolean): string | null;
   reply(identity: OutreachIdentity, postId: string, text: string): Promise<string>;
   relationship(identity: OutreachIdentity, userId: string, username?: string): Promise<OutreachRelationship>;

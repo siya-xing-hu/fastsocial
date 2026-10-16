@@ -27,7 +27,7 @@ export interface AccountProfile {
   memory: AccountMemory;
   /** Exact manually edited text; AI rebuilds replace it with structured memory. */
   portraitText?: string;
-  /** Preserve the original sources when manually editing or clearing a portrait. */
+  /** Posts used to generate the portrait, preserved through manual edits and clearing. */
   evidenceIds?: string[];
   version: number;
   initialized: boolean;

@@ -5,6 +5,7 @@ import type {
   WorkflowInput,
   WorkflowRecord,
 } from "@fast-social/contracts";
+import type { WorkflowCheckpoint } from './checkpoint.ts';
 
 export class WorkflowRepository {
   private db: DatabaseSync;
@@ -154,6 +155,7 @@ export class WorkflowRepository {
       postScan: targetChanged || current?.accountId !== input.accountId ? null : current?.postScan ?? null,
       lastError: null,
       retryAt: null,
+      resumeEnabledAfterFailure: false,
     };
     this.write(value);
     return value;
@@ -200,20 +202,65 @@ export class WorkflowRepository {
     return (this.db.prepare("SELECT value FROM workflow_records WHERE workflow_id=? AND json_extract(value,'$.status')='pending' ORDER BY rowid")
       .all(id) as { value: string }[]).map(row => JSON.parse(row.value));
   }
+  retryable(id: string): WorkflowRecord[] {
+    return (this.db.prepare("SELECT value FROM workflow_records WHERE workflow_id=? AND json_extract(value,'$.status') IN ('failed','uncertain','pending') ORDER BY rowid")
+      .all(id) as { value: string }[]).map(row => JSON.parse(row.value));
+  }
+  checkpoint(id: string): WorkflowCheckpoint | undefined {
+    const row = this.db.prepare('SELECT value FROM workflow_checkpoints WHERE workflow_id=?').get(id) as { value: string } | undefined;
+    return row ? JSON.parse(row.value) : undefined;
+  }
+  checkpointRecords(checkpoint: WorkflowCheckpoint): WorkflowRecord[] {
+    const read = this.db.prepare('SELECT value FROM workflow_records WHERE id=? AND workflow_id=?');
+    return checkpoint.recordIds.map(id => {
+      const row = read.get(id, checkpoint.run.workflowId) as { value: string } | undefined;
+      if (!row) throw new Error('整轮任务的执行记录缺失，不能继续恢复');
+      return JSON.parse(row.value) as WorkflowRecord;
+    });
+  }
+  /** Publish the complete queue, seen IDs and counters together before any side effect. */
+  saveCheckpoint(checkpoint: WorkflowCheckpoint, records: WorkflowRecord[] = [], seen: string[] = []): void {
+    this.db.exec('SAVEPOINT workflow_checkpoint');
+    try {
+      for (const record of records) this.record(record);
+      for (const postId of seen) this.markSeen(checkpoint.run.workflowId, postId);
+      const revision = checkpoint.revision + 1;
+      this.db.prepare('INSERT INTO workflow_checkpoints VALUES (?,?) ON CONFLICT(workflow_id) DO UPDATE SET value=excluded.value')
+        .run(checkpoint.run.workflowId, JSON.stringify({ ...checkpoint, revision }));
+      this.db.exec('RELEASE workflow_checkpoint');
+      checkpoint.revision = revision;
+    } catch (error) {
+      this.db.exec('ROLLBACK TO workflow_checkpoint'); this.db.exec('RELEASE workflow_checkpoint'); throw error;
+    }
+  }
   recover(): void {
-    for (const w of this.list())
-      for (const r of this.records(w.id))
+    for (const w of this.list()) {
+      const checkpoint = this.checkpoint(w.id);
+      const records = checkpoint ? this.checkpointRecords(checkpoint) : this.records(w.id);
+      let interrupted = checkpoint?.run.status === 'running';
+      for (const r of records)
         if (r.status === "running") {
-          r.status = "uncertain";
+          interrupted = true;
+          r.status = r.actions.some(a => a.status === 'running') ? 'uncertain' : 'failed';
           r.actions.forEach((a) => {
             if (a.status === "running") a.status = "uncertain";
           });
           this.record(r);
-          this.write({
+        }
+      if (interrupted) {
+        const message = '上次执行中断，请手动恢复本轮任务。';
+        if (checkpoint) {
+          checkpoint.run.status = 'failed'; checkpoint.run.error = message;
+          checkpoint.run.finishedAt = new Date().toISOString();
+          this.saveCheckpoint(checkpoint);
+        }
+        this.write({
             ...w,
             enabled: false,
-            lastError: "上次执行中断，请核对执行记录后再启用。",
+            resumeEnabledAfterFailure: w.resumeEnabledAfterFailure || w.enabled,
+            lastError: message,
           });
-        }
+      }
+    }
   }
 }

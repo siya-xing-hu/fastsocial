@@ -202,12 +202,6 @@ export function useAssistant() {
     if (command.error) { error.value = command.error; return; }
     const chosen = retry?.skill ?? command.skill;
     const request = command.input || (chosen === "summary" ? "总结当前页面，提炼关键观点。" : chosen === "reply" ? "根据当前原帖生成一条自然的回复。" : "根据已有草稿和选中素材写一条 Post；没有素材时先问我想表达什么。");
-    const intendedConversation = current.value.id;
-    if (!await confirmOperation({title: retry ? '确认重试生成' : '确认 AI 生成', message: `将读取当前页面内容，结合本轮输入和对话记录调用 AI，${chosen ? `使用 /${chosen} 生成${skillName(chosen)}内容` : '生成回复'}。${current.value.account?.username ? `\n当前账号：@${current.value.account.username}。` : ''}\n是否继续？`})) return;
-    if (busy.value || !ready.value) return;
-    if (current.value.id !== intendedConversation || (!retry && input.value !== originalInput)) {
-      error.value = '账号、会话或输入已变化，请重新确认后生成。'; return;
-    }
     error.value = ""; notice.value = ""; deleted.value = null; busy.value = true; runningSkill.value = chosen;
     let conversation = current.value, user: ChatMessage | undefined, generated = false;
     try {

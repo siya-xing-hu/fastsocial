@@ -23,8 +23,14 @@ test('malformed, duplicated and fabricated matches fail validation', () => {
   }
 });
 
-test('portrait length is a prompt guideline, while fabricated evidence still fails', () => {
-  assert.throws(() => parseBatchResult(JSON.stringify({ memory: { topics: { text: 'maybe', kind: 'inferred', evidenceIds: ['fake'] } } }), portrait));
+test('portrait text survives missing or imperfect citations without a hard length limit', () => {
+  for (const evidenceIds of [undefined, null, [], ['fake'], [true, {}, ' 1 ', 2, 'fake', '1'], '1', [2109534716487745590]]) {
+    const result = parseBatchResult(JSON.stringify({ memory: { background: { text: '第一段\n\n第二段', evidenceIds } }, note: '附加说明' }), portrait);
+    assert.equal(result.memory?.background?.text, '第一段\n\n第二段');
+    assert.equal(result.memory?.background?.kind, 'inferred');
+    assert.ok(result.memory?.background?.evidenceIds.every(id => ['1', '2'].includes(id)));
+  }
+  assert.deepEqual(parseBatchResult(JSON.stringify({memory: {topics: {text: '开发', evidenceIds: [1, ' 2 ', '2', 'fake']}}}), portrait).memory?.topics?.evidenceIds, ['1', '2']);
   const text = '讨论开发工具与公开产品经验。'.repeat(100);
   const valid = parseBatchResult(JSON.stringify({ memory: { topics: { text, evidenceIds: ['1'], kind: 'explicit' } } }), portrait);
   assert.equal(valid.memory?.topics?.text, text);
@@ -32,26 +38,31 @@ test('portrait length is a prompt guideline, while fabricated evidence still fai
   assert.match(batchMessages(portrait)[0]!.content, /不设硬性字数上限/);
 });
 
-test('profile array fields report their actual format error instead of missing evidence', () => {
+test('portrait format variations normalize into text without rejecting metadata or extra fields', () => {
   const fact = { text: '讨论 Codex 额度', evidenceIds: ['1'], kind: 'explicit' };
-  for (const section of ['topics', 'language']) {
-    assert.throws(() => parseBatchResult(JSON.stringify({ memory: { [section]: [fact] } }), portrait), new RegExp(`${section} 必须为单个对象`));
-  }
-  assert.throws(() => parseBatchResult(JSON.stringify({ memory: { topics: { ...fact, evidenceIds: ['invented'] } } }), portrait), /引用了未提供的证据/);
-  assert.throws(() => parseBatchResult(JSON.stringify({ memory: { topics: { ...fact, text: '第一行\n第二行' } } }), portrait), /非空单行/);
+  const result = parseBatchResult(JSON.stringify({memory: {background: '开发者', topics: [fact, '产品实践'], language: {...fact, kind: 'unknown'}, recent: null, extra: '忽略额外字段'}}), portrait);
+  assert.equal(result.memory?.background?.text, '开发者');
+  assert.equal(result.memory?.topics?.text, '讨论 Codex 额度\n产品实践');
+  assert.equal(result.memory?.language?.kind, 'inferred');
+  assert.equal(result.memory?.recent, undefined);
+  assert.equal(parseBatchResult('{"memory":"普通画像正文"}', portrait).memory?.background?.text, '普通画像正文');
+  assert.deepEqual(parseBatchResult('{"memory":null}', portrait).memory, null);
+  const manual = {text: '已有手动修正', evidenceIds: ['manual'], kind: 'manual' as const, updatedAt: '2026-10-13T00:00:00Z'};
+  assert.deepEqual(parseBatchResult(JSON.stringify({memory: {topics: {...fact, kind: 'manual'}}}), {...portrait, memory: {topics: manual}}).memory?.topics, manual);
 });
 
 test('portrait rebuild makes one request and rejects invalid output without repeating generation', async () => {
   const calls: AIChatMessage[][] = [];
-  const fact = { text: '讨论 Codex 额度', evidenceIds: ['1'], kind: 'explicit' };
   const matcher = new BatchMatcher({ async complete(_provider: unknown, messages: AIChatMessage[]) {
     calls.push(messages);
-    return JSON.stringify({ memory: { topics: calls.length === 1 ? [fact] : fact } });
+    return '{"memory":';
   } } as unknown as AIGateway);
-  await assert.rejects(matcher.analyze(portrait), /topics 必须为单个对象/);
+  await assert.rejects(matcher.analyze(portrait), /不是有效 JSON/);
   assert.equal(calls.length, 1);
   assert.equal(calls[0]!.length, 2);
   assert.ok(inputSize(input) <= INPUT_BUDGET);
+  for (const raw of ['{}', '{"memory":42}', '{"memory":{"topics":{"text":false}}}'])
+    assert.throws(() => parseBatchResult(raw, portrait));
 });
 
 test('AI corrects invalid matches once but never retries network errors at the batch layer', async () => {

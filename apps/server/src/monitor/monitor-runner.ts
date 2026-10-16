@@ -14,7 +14,7 @@ interface RunnerDependencies {
   monitors: MonitorRepository; social: SocialAdapter; matcher: BatchMatcher;
   accounts: AccountRepository; telegram: TelegramNotifier;
 }
-export interface UserWorkflowBatch { posts: SocialPost[]; decisions: PostDecision[]; memory: AccountMemory; profile: AccountProfile; cursor: string | null; postScan: Workflow['postScan'] }
+export interface UserWorkflowBatch { posts: SocialPost[]; decisions: PostDecision[]; memory: AccountMemory; profile: AccountProfile; cursor: string | null; postScan: Workflow['postScan']; status: MonitorBatchStatus }
 export const MAX_WORKFLOW_TIMELINE_PAGES = 5;
 export class MonitorRunner {
   private readonly locks = new Map<string, Promise<unknown>>();
@@ -86,6 +86,7 @@ export class MonitorRunner {
       ensureCurrent();
       const previous = accounts.profile(account.id);
       accounts.saveLearning({ account, memory: result.memory ?? {}, initialized: true, bioSource: bioSource(account),
+        evidenceIds: input.posts.map(post => post.id),
         version: (previous?.version ?? 0) + 1, updatedAt: new Date().toISOString() }, input.posts);
       return this.userProfile(username, id);
     });
@@ -122,22 +123,29 @@ export class MonitorRunner {
         const { cursor, postScan } = fetched;
         const savedProfile: AccountProfile = { account, memory: result.memory, initialized: profile?.initialized ?? false,
           version: profile?.version ?? 0, updatedAt: profile?.updatedAt ?? '' };
-        const value = await work({ ...result, posts: candidates, profile: savedProfile, cursor, postScan });
-        if (!preview) {
-          accounts.transaction(() => {
-            commit(cursor, postScan);
-            accounts.saveDecisions(workflow.id, result.decisions);
-            accounts.saveStatus(workflow.id, { ...status, analyzed: result.decisions.length, matched: result.decisions.filter(d => d.status === 'match').length,
-              uncertain: result.decisions.filter(d => d.status === 'uncertain').length, pending: 0, phase: 'done', baselinePending: false });
-          });
-          trace('workflow.analysis.saved', '监听判断与处理记录已保存', { username, latestPostId: cursor, postScan, analyzed: result.decisions.length });
-        }
+        const batch: UserWorkflowBatch = { ...result, posts: candidates, profile: savedProfile, cursor, postScan,
+          status: { ...status, analyzed: result.decisions.length, matched: result.decisions.filter(d => d.status === 'match').length,
+            uncertain: result.decisions.filter(d => d.status === 'uncertain').length, pending: 0, phase: 'done', baselinePending: false } };
+        const value = await work(batch);
+        if (!preview) this.completeWorkflowBatch(workflow.id, batch, commit);
         return value;
       } catch (error) {
         if (!preview) accounts.saveStatus(workflow.id, { ...status, error: error instanceof Error ? error.message : String(error), baselinePending: false });
         throw error;
       }
     });
+  }
+
+  /** Retry commits the saved analysis without fetching or asking AI again. */
+  completeWorkflowBatch(id: string, batch: UserWorkflowBatch,
+    commit: (cursor: string | null, postScan: Workflow['postScan']) => void): void {
+    const accounts = this.dependencies.accounts;
+    accounts.transaction(() => {
+      commit(batch.cursor, batch.postScan);
+      accounts.saveDecisions(id, batch.decisions);
+      accounts.saveStatus(id, batch.status);
+    });
+    trace('workflow.analysis.saved', '监听判断与处理记录已保存', { latestPostId: batch.cursor, postScan: batch.postScan, analyzed: batch.decisions.length });
   }
 
   async test(id: string): Promise<MonitorTestResult> {

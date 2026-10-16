@@ -95,13 +95,13 @@ export function createApp(options: AppOptions = {}) {
     const page = await xClient.fetchTimelinePage(profile.account, undefined, 'posts', accountId);
     const input = portraitInput(profile.account, page.posts);
     const result = await matcher.analyze(input);
-    const evidenceIds = new Set(Object.values(result.memory ?? {}).flatMap(fact => fact.evidenceIds));
-    return { summary: result.memory ? memoryText(result.memory) : '', summaryEvidence: input.posts.filter(post => evidenceIds.has(post.id)) };
+    return { summary: result.memory ? memoryText(result.memory) : '', summaryEvidence: input.posts };
   });
   const trackedActions = {
     identity: socialActions.identity.bind(socialActions), home: socialActions.home.bind(socialActions),
     follow: followingService.follow.bind(followingService), reply: socialActions.reply.bind(socialActions), relationship: socialActions.relationship.bind(socialActions),
     followSkipReason: followingService.followSkipReason.bind(followingService),
+    retryFollow: followingService.retryFollow.bind(followingService),
   };
   const outreach = new OutreachService(new OutreachRepository(database), trackedActions, new MutualFollowClassifier(ai));
   const assistantService = new AssistantService(assistantRepository, settingsRepository.configuration, ai, xClient);

@@ -7,6 +7,15 @@ export interface AnalysisProgress {
   decisions?: { postId: string; matched: boolean }[];
 }
 export type ReportAnalysisProgress = (progress: AnalysisProgress) => void;
+export interface WorkflowProgressSnapshot {
+  batches: { index: number; postIds: string[] }[];
+  scanned: string[];
+  examined: string[];
+  decisions: [string, boolean][];
+  completed: string[];
+  confirmedFollows: string[];
+  current?: { index: number; postIds: string[] };
+}
 
 /** Follow workflows count confirmed new relationships as hits; other workflows count AI matches. */
 export class WorkflowProgress {
@@ -19,7 +28,20 @@ export class WorkflowProgress {
   private current?: { index: number; postIds: string[] };
   private readonly run: WorkflowRun;
   private readonly requireNewFollow: boolean;
-  constructor(run: WorkflowRun, requireNewFollow = false) { this.run = run; this.requireNewFollow = requireNewFollow; }
+  constructor(run: WorkflowRun, requireNewFollow = false, saved?: WorkflowProgressSnapshot) {
+    this.run = run; this.requireNewFollow = requireNewFollow;
+    if (saved) {
+      this.batches = new Map(saved.batches.map(batch => [batch.index, batch]));
+      this.scanned = new Set(saved.scanned); this.examined = new Set(saved.examined);
+      this.decisions = new Map(saved.decisions); this.completed = new Set(saved.completed);
+      this.confirmedFollows = new Set(saved.confirmedFollows); this.current = saved.current;
+    }
+    this.sync();
+  }
+  snapshot(): WorkflowProgressSnapshot {
+    return { batches: [...this.batches.values()], scanned: [...this.scanned], examined: [...this.examined],
+      decisions: [...this.decisions], completed: [...this.completed], confirmedFollows: [...this.confirmedFollows], current: this.current };
+  }
 
   report = (update: AnalysisProgress): void => {
     for (const id of update.postIds) this.scanned.add(id);

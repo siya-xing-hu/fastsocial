@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { WorkflowAction, WorkflowInput } from "@fast-social/contracts";
+import type { WorkflowAction, WorkflowInput, WorkflowRetryInput } from "@fast-social/contracts";
 import { RANDOM_WORKFLOW_ACCOUNT, replyElements } from "@fast-social/contracts";
 import { record, string } from "../configuration/routes.ts";
 import type { SettingsRepository } from "../repositories/settings-repository.ts";
@@ -106,6 +106,19 @@ export function registerWorkflowRoutes(
 ): void {
   app.get("/api/workflows", async () => ({ ok: true, data: repo.list() }));
   app.get("/api/workflows/runs", async () => ({ ok: true, data: service.runs() }));
+  app.get<{ Params: { id: string } }>('/api/workflows/:id/retry', async req => ({ ok: true, data: service.retryPlan(req.params.id) }));
+  app.post<{ Params: { id: string }; Body: WorkflowRetryInput }>('/api/workflows/:id/retry', async (req, reply) => {
+    const w = repo.get(req.params.id);
+    if (!w) return reply.code(404).send({ ok: false, error: { code: 'NOT_FOUND', message: '编排不存在' } });
+    validateWorkflow(w, settings);
+    const input = req.body;
+    if (!input || typeof input.configuration !== 'string' || !Array.isArray(input.recordIds)
+      || input.recordIds.some(id => typeof id !== 'string') || typeof input.confirmUncertain !== 'boolean' || typeof input.restoreEnabled !== 'boolean')
+      throw new ValidationError('重试参数无效，请重新确认');
+    const run = service.retryOnce(w.id, input);
+    if (!run) return reply.code(503).send({ ok: false, error: { code: 'SERVICE_STOPPING', message: '服务正在停止，请稍后重试' } });
+    return reply.code(202).send({ ok: true, data: run });
+  });
   app.get<{ Params: { id: string } }>('/api/workflows/:id/profile', async req => ({ ok: true, data: service.profile(req.params.id) }));
   app.put<{ Params: { id: string }; Body: { text?: unknown } }>('/api/workflows/:id/profile', async req => {
     if (typeof req.body?.text !== 'string') throw new ValidationError('画像必须是文本');

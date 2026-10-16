@@ -8,6 +8,7 @@ import {
 import { log_error, log_info } from "../common/logging";
 import { NonRetryableError, stringifyQueryParameter } from "./kit";
 import { execGptPrompt } from "./ai";
+import type { TranslationResult } from "../common/translation";
 
 const AUTO_TRANSLATE_STATE_KEY = "fast-social-auto-translate-state";
 const DEFAULT_DEEPL_ENDPOINT = "https://api.deepl.com/v2/translate";
@@ -213,10 +214,10 @@ async function clearDeeplFallback(): Promise<void> {
 async function automaticTranslate(
   text: string,
   locale: string,
-): Promise<string> {
+): Promise<TranslationResult> {
   const fallbackUntil = await getDeeplFallbackUntil();
   if (fallbackUntil > Date.now()) {
-    return deeplTranslate(text, locale);
+    return { text: await deeplTranslate(text, locale), provider: 'deepl' };
   }
 
   if (fallbackUntil > 0) {
@@ -224,7 +225,7 @@ async function automaticTranslate(
   }
 
   try {
-    return await googleTranslate(text, locale);
+    return { text: await googleTranslate(text, locale), provider: 'google' };
   } catch (error) {
     if (!getDeeplApiKey()) {
       if (error instanceof GoogleTranslateUnavailableError) {
@@ -239,7 +240,7 @@ async function automaticTranslate(
     if (error instanceof GoogleTranslateUnavailableError) {
       await enableDeeplFallback();
     }
-    return translated;
+    return { text: translated, provider: 'deepl' };
   }
 }
 
@@ -256,14 +257,14 @@ export function buildTranslationPrompt(
   return renderPrompt(`${template.trim()}\n\n${instructions}`, { input: text, targetLanguage: targetLang });
 }
 
-export async function translate(channel: TranslateChannelEnum, text: string, is_advanced: boolean, locale: string): Promise<string> {
+export async function translate(channel: TranslateChannelEnum, text: string, is_advanced: boolean, locale: string): Promise<TranslationResult> {
   switch (channel) {
     case TranslateChannelEnum.AUTO:
       return automaticTranslate(text, locale);
     case TranslateChannelEnum.GOOGLE:
-      return googleTranslate(text, locale);
+      return { text: await googleTranslate(text, locale), provider: 'google' };
     case TranslateChannelEnum.DEEPL:
-      return deeplTranslate(text, locale);
+      return { text: await deeplTranslate(text, locale), provider: 'deepl' };
     case TranslateChannelEnum.AI:
       const prompt = buildTranslationPrompt(
         config.value.translationService.translatePrompt || DEFAULT_TRANSLATE_PROMPT,
@@ -272,12 +273,13 @@ export async function translate(channel: TranslateChannelEnum, text: string, is_
         is_advanced,
       );
       try {
-        return await execGptPrompt(undefined, [
+        const translated = await execGptPrompt(undefined, [
           {
             role: "user",
             content: prompt,
           },
         ]);
+        return { text: translated, provider: 'ai' };
       } catch (error) {
         log_error("AI translation unavailable; falling back to local translation providers", error);
         return automaticTranslate(text, locale);

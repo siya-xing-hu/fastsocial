@@ -223,7 +223,7 @@ test('deferred replies require persisted proof of a new follow and respect a lat
       await service.stop(); service = new WorkflowService(deps); limited = false;
       await service.run(w.id, true);
       assert.equal(f.repo.pending(w.id).length, 0); assert.equal(f.repo.records(w.id)[0]?.status, 'skipped');
-      assert.ok(!f.calls.includes('reply')); assert.equal(service.runs()[0]?.matched, 0);
+      assert.ok(!f.calls.includes('reply')); assert.equal(service.runs()[0]?.matched, 1); // Original new follow remains part of this round.
     } finally { await service.stop(); f.db.close(); }
   }
 });
@@ -378,7 +378,7 @@ test('226 during the third reply retains batch counts and completed follows, pau
     assert.equal(logs.at(-1)?.event, 'workflow.finish');
     assert.equal(logs.at(-1)?.data.status, 'failed'); assert.equal(logs.at(-1)?.data.aiMatched, 6);
     assert.match(run.error!, /回复 @author2（Post 302）失败.*代码 226.*自动化或垃圾内容.*不会自动重发/);
-    const record = f.repo.records(w.id)[0]!;
+    const record = f.repo.records(w.id).find(r => r.post.id === '302')!;
     assert.deepEqual(record.actions.map(step => step.status), ['done', 'uncertain', 'pending']);
     assert.equal(record.actions[1]?.result, run.error);
     assert.equal(f.calls.filter(call => call === 'notify').length, 2);
@@ -386,8 +386,8 @@ test('226 during the third reply retains batch counts and completed follows, pau
     assert.equal(f.repo.get(w.id)?.lastError, run.error);
     assert.equal(f.repo.get(w.id)?.lastSeenPostId, w.lastSeenPostId);
     assert.ok(f.repo.seen(w.id, '302'));
-    assert.ok(!f.repo.seen(w.id, '303')); // Remaining hits were not attempted.
-    assert.deepEqual(f.repo.pending(w.id), []);
+    assert.ok(f.repo.seen(w.id, '303')); // Claimed with the durable queue, still pending action.
+    assert.deepEqual(f.repo.pending(w.id).map(r => r.post.id), ['303', '304', '305']);
     await service.stop();
     service = new WorkflowService(deps);
     await service.tick();
@@ -480,7 +480,7 @@ test('daily quota defers only unsent actions and resumes them after restart with
     assert.deepEqual(pending.actions.map(a => a.status), ['done', 'pending', 'pending']);
     assert.equal(f.calls.filter(c => c === 'follow').length, 1); assert.ok(!f.calls.includes('reply'));
     await service.stop(); service = new WorkflowService(f.deps);
-    await service.tick(); assert.equal(f.repo.pending(w.id).length, 1); assert.equal(service.runs().length, 0);
+    await service.tick(); assert.equal(f.repo.pending(w.id).length, 1); assert.equal(service.runs()[0]?.status, 'limited');
     // Increasing the allowance permits an explicit run immediately; the daily reset follows the same quota path.
     quota.save(f.input.accountId, { ...DEFAULT_ACCOUNT_DAILY_LIMITS, follow: 1, reply: 2 });
     await service.run(w.id, true);
@@ -822,4 +822,298 @@ for (const failure of ['missing_end', 'malformed', 'disconnect'] as const) test(
     assert.equal(service.runs()[0]?.status, 'done'); assert.equal(service.runs()[0]?.completed, 1);
     assert.equal(requests, 2); assert.equal(f.calls.filter(c => c === 'follow').length, 1); assert.equal(f.calls.filter(c => c === 'reply').length, 1);
   } finally { release.resolve(); await running; await service.stop(); f.db.close(); }
+});
+
+function retryInput(service: WorkflowService, id: string, confirmUncertain = false) {
+  const plan = service.retryPlan(id);
+  return { runId: plan.run?.id, revision: plan.revision, configuration: plan.configuration, recordIds: plan.records.map(r => r.id), restoreEnabled: plan.restoreEnabled, confirmUncertain };
+}
+
+test('whole-round recovery persists every hit before actions and keeps original counters across two retries and restarts', async () => {
+  const f = fixture();
+  const base = (await f.deps.x.home())[0]!;
+  const items = Array.from({ length: 20 }, (_, i) => ({ ...base, userId: `target-${i}`,
+    post: { ...base.post, id: String(100 + i), author: `author${i}` } }));
+  const w = f.repo.save({ ...f.input, source: 'home', usernames: [], actions: [{ type: 'follow' }, { type: 'reply', mode: 'skill' }] });
+  let fetches = 0, analyses = 0, draftFailure = true, followFailure = true;
+  const effects: string[] = [];
+  const deps = { ...f.deps, x: { ...f.deps.x,
+    home: async () => { fetches++; return items; },
+    follow: async (_identity: unknown, id: string) => {
+      // Even at the first side effect, the remaining hits and ALL decisions must be durable.
+      assert.equal(f.repo.records(w.id).length, 3);
+      assert.ok(items.every(item => f.repo.seen(w.id, item.post.id)));
+      effects.push(`follow:${id}`);
+      if (id === 'target-2' && followFailure) throw new Error('network lost');
+      return { following: true, followedBy: false };
+    },
+    reply: async (_identity: unknown, id: string) => { effects.push(`reply:${id}`); return `reply-${id}`; },
+  }, evaluateBatch: async (_condition: string, posts: SocialPost[]) => {
+    analyses++; return posts.map((post, i) => ({ postId: post.id, matched: i < 3, message: 'match' }));
+  }, generateReply: async (_account: string, post: SocialPost) => {
+    if (post.id === '101' && draftFailure) throw new Error('AI temporarily unavailable');
+    return 'draft';
+  } };
+  let service = new WorkflowService(deps);
+  try {
+    await service.run(w.id);
+    const original = service.runs()[0]!;
+    assert.deepEqual([original.scanned, original.aiMatched, original.completed], [20, 3, 1]);
+    assert.deepEqual(f.repo.records(w.id).map(r => r.status), ['pending', 'failed', 'done']);
+    assert.ok(f.repo.records(w.id).every(r => r.runId === original.id));
+    await service.stop(); service = new WorkflowService(deps);
+    assert.deepEqual(service.runs()[0], original);
+    const plan = service.retryPlan(w.id);
+    assert.deepEqual(plan.records.map(r => r.post.id), ['101', '102']);
+    const stale = retryInput(service, w.id);
+    draftFailure = false;
+    service.retryOnce(w.id, stale); await service.run(w.id);
+    assert.deepEqual([service.runs()[0]?.id, service.runs()[0]?.startedAt], [original.id, original.startedAt]);
+    assert.deepEqual([service.runs()[0]?.scanned, service.runs()[0]?.aiMatched, service.runs()[0]?.completed], [20, 3, 2]);
+    assert.throws(() => service.retryOnce(w.id, stale), /已变化/);
+    await service.stop(); service = new WorkflowService(deps); followFailure = false;
+    service.retryOnce(w.id, retryInput(service, w.id)); await service.run(w.id);
+    assert.deepEqual([fetches, analyses], [1, 1]);
+    assert.deepEqual([service.runs()[0]?.id, service.runs()[0]?.status, service.runs()[0]?.scanned, service.runs()[0]?.aiMatched, service.runs()[0]?.completed], [original.id, 'done', 20, 3, 3]);
+    assert.deepEqual(effects, ['follow:target-0', 'reply:100', 'follow:target-1', 'reply:101', 'follow:target-2', 'follow:target-2', 'reply:102']);
+    assert.equal(f.repo.get(w.id)?.lastError, null); assert.equal(f.repo.get(w.id)?.enabled, true);
+    await service.stop(); service = new WorkflowService(deps);
+    assert.equal(service.runs()[0]?.completed, 3);
+    // A later successful round gets a new ID; cumulative statistics do not leak into it.
+    await service.run(w.id);
+    assert.notEqual(service.runs()[0]?.id, original.id);
+    assert.deepEqual([service.runs()[0]?.scanned, service.runs()[0]?.aiMatched, service.runs()[0]?.completed], [20, 0, 0]);
+  } finally { await service.stop(); f.db.close(); }
+});
+
+test('checkpoint publication rolls back all hits and seen IDs if any record cannot be saved', async () => {
+  const f = fixture(), base = (await f.deps.x.home())[0]!;
+  const w = f.repo.save({ ...f.input, source: 'home', usernames: [] });
+  f.db.exec(`CREATE TRIGGER fail_second_record BEFORE INSERT ON workflow_records
+    WHEN json_extract(NEW.value,'$.post.id')='101' BEGIN SELECT RAISE(ABORT, 'mock disk failure'); END`);
+  const service = new WorkflowService({ ...f.deps, x: { ...f.deps.x, home: async () => [base, { ...base, post: { ...base.post, id: '101' } }] } });
+  try {
+    await service.run(w.id);
+    assert.match(service.runs()[0]!.error!, /mock disk failure/);
+    assert.deepEqual(f.repo.records(w.id), []);
+    assert.equal(f.repo.seen(w.id, '100'), false); assert.equal(f.repo.seen(w.id, '101'), false);
+    assert.equal(f.repo.checkpoint(w.id)?.analysisComplete, false);
+    assert.ok(!f.calls.includes('follow'));
+    f.db.exec('DROP TRIGGER fail_second_record');
+    service.retryOnce(w.id, retryInput(service, w.id)); await service.run(w.id);
+    assert.equal(service.runs()[0]?.status, 'done');
+  } finally { await service.stop(); f.db.close(); }
+});
+
+test('restart recovers the complete queue beyond the 100-row history view and can finalize an already completed queue', async () => {
+  const f = fixture(), base = (await f.deps.x.home())[0]!;
+  const w = f.repo.save({ ...f.input, source: 'home', usernames: [], actions: [{ type: 'notify', content: '' }] });
+  let fail = true, fetches = 0, effects = 0;
+  const deps = { ...f.deps, x: { ...f.deps.x, home: async () => {
+    fetches++; return Array.from({ length: 120 }, (_, i) => ({ ...base, post: { ...base.post, id: String(100 + i) } }));
+  } }, notify: async () => { if (fail) throw new Error('mock failure'); effects++; } };
+  let service = new WorkflowService(deps);
+  try {
+    await service.run(w.id);
+    const round = f.repo.checkpoint(w.id)!;
+    assert.equal(round.recordIds.length, 120);
+    // Simulate a process exiting before the final failure status could be committed.
+    round.run.status = 'running'; f.repo.saveCheckpoint(round);
+    await service.stop(); service = new WorkflowService(deps);
+    assert.equal(service.retryPlan(w.id).records.length, 120);
+    fail = false;
+    service.retryOnce(w.id, retryInput(service, w.id, true)); await service.run(w.id);
+    assert.equal(effects, 120); assert.equal(fetches, 1); assert.equal(service.runs()[0]?.completed, 120);
+    const completed = f.repo.checkpoint(w.id)!;
+    completed.run.status = 'running'; f.repo.saveCheckpoint(completed);
+    await service.stop(); service = new WorkflowService(deps);
+    assert.deepEqual(service.retryPlan(w.id).records, []);
+    service.retryOnce(w.id, retryInput(service, w.id)); await service.run(w.id);
+    assert.equal(effects, 120); assert.equal(fetches, 1); assert.equal(service.runs()[0]?.completed, 120);
+    assert.equal(service.runs()[0]?.id, round.run.id); assert.equal(service.runs()[0]?.status, 'done');
+  } finally { await service.stop(); f.db.close(); }
+});
+
+for (const applied of [false, true]) test(`manual retry reconciles an uncertain tracked follow (applied=${applied}) without replaying AI or completed posts`, async () => {
+  const f = fixture(), followingRepo = new FollowingRepository(f.db);
+  let following = false, writes = 0, fetches = 0, analyses = 0;
+  const tracked = new FollowingService(followingRepo, f.settings, {
+    identity: f.deps.x.identity,
+    profile: async () => ({ account: { id: '2', username: 'author', name: 'Author', bio: '', fetchedAt: '' }, following, followedBy: false }),
+    follow: async () => { writes++; following = writes > 1 || applied; if (writes === 1) throw new Error('fetch failed'); return { following: true, followedBy: false }; },
+    unfollow: async () => { throw new Error('unexpected unfollow'); },
+  }, async () => ({ summary: 'fixture', summaryEvidence: [] }));
+  const deps = { ...f.deps, deferPortraits: tracked.deferPortraits.bind(tracked),
+    x: { ...f.deps.x, home: async () => { fetches++; return f.deps.x.home(); },
+      follow: tracked.follow.bind(tracked), retryFollow: tracked.retryFollow.bind(tracked), followSkipReason: tracked.followSkipReason.bind(tracked) },
+    evaluateBatch: async (condition: string, posts: SocialPost[]) => { analyses++; return f.deps.evaluateBatch(condition, posts); } };
+  let service = new WorkflowService(deps);
+  const w = f.repo.save({ ...f.input, source: 'home', usernames: [], actions: [{ type: 'follow' }] });
+  try {
+    await service.run(w.id);
+    assert.equal(f.repo.get(w.id)?.enabled, false);
+    const id = f.repo.records(w.id)[0]!.id;
+    await service.stop(); service = new WorkflowService(deps); // Recovery information survives restart.
+    const input = retryInput(service, w.id);
+    assert.deepEqual([writes, fetches, analyses], [1, 1, 1]); // Previewing a retry does no external work.
+    service.retryOnce(w.id, input); await service.run(w.id);
+    assert.deepEqual([writes, fetches, analyses], [applied ? 1 : 2, 1, 1]);
+    assert.equal(service.runs()[0]?.status, 'done'); assert.equal(service.runs()[0]?.completed, 1);
+    const record = f.repo.records(w.id)[0]!;
+    assert.equal(record.id, id); assert.equal(record.status, 'done'); assert.equal(record.resume, undefined);
+    assert.equal(record.actions[0]?.newlyFollowed, !applied);
+    assert.equal(followingRepo.list('1')[0]?.status, 'following');
+    assert.equal(f.repo.get(w.id)?.enabled, true); assert.equal(f.repo.get(w.id)?.lastError, null);
+    assert.equal(f.repo.get(w.id)?.resumeEnabledAfterFailure, false);
+    assert.throws(() => service.retryOnce(w.id, input), /没有需要重试/); // Stale double click after completion cannot start a new run.
+  } finally { await service.stop(); await tracked.stop(); f.db.close(); }
+});
+
+for (const mode of ['already_following', 'opt_out', 'profile_failure', 'other_actor'] as const)
+  test(`manual retry honors tracked relationship boundary: ${mode}`, async () => {
+    const f = fixture(), followingRepo = new FollowingRepository(f.db);
+    let reads = 0, writes = 0, retrying = false;
+    const tracked = new FollowingService(followingRepo, f.settings, {
+      identity: f.deps.x.identity,
+      profile: async () => {
+        reads++; if (retrying && mode === 'profile_failure') throw new Error('profile unavailable');
+        return { account: { id: '2', username: 'author', name: 'Author', bio: '', fetchedAt: '' }, following: retrying && mode === 'already_following', followedBy: false };
+      },
+      follow: async () => { writes++; throw new Error('fetch failed'); },
+      unfollow: async () => { throw new Error('unexpected unfollow'); },
+    }, async () => ({ summary: 'fixture', summaryEvidence: [] }));
+    const service = new WorkflowService({ ...f.deps, deferPortraits: tracked.deferPortraits.bind(tracked), x: { ...f.deps.x,
+      follow: tracked.follow.bind(tracked), retryFollow: tracked.retryFollow.bind(tracked), followSkipReason: tracked.followSkipReason.bind(tracked) } });
+    const w = f.repo.save(f.input);
+    try {
+      await service.run(w.id); retrying = true;
+      if (mode === 'opt_out') followingRepo.save({ ...followingRepo.list('1')[0]!, status: 'not_following' });
+      if (mode === 'other_actor') {
+        const record = f.repo.records(w.id)[0]!;
+        f.repo.record({ ...record, resume: { ...record.resume!, actorId: '99' } });
+      }
+      service.retryOnce(w.id, retryInput(service, w.id)); await service.run(w.id);
+      assert.equal(writes, 1); assert.ok(!f.calls.includes('reply')); assert.ok(!f.calls.includes('notify'));
+      const failed = mode === 'profile_failure' || mode === 'other_actor';
+      assert.equal(service.runs()[0]?.status, failed ? 'failed' : 'done');
+      assert.equal(f.repo.records(w.id)[0]?.status, failed ? (mode === 'other_actor' ? 'failed' : 'uncertain') : 'skipped');
+      assert.equal(f.repo.get(w.id)?.enabled, !failed);
+      if (mode === 'opt_out' || mode === 'other_actor') assert.equal(reads, 1);
+    } finally { await service.stop(); await tracked.stop(); f.db.close(); }
+  });
+
+test('manual reply retry needs explicit confirmation, retains draft, skips successful actions and shares the run lock', async () => {
+  const f = fixture(), gate = Promise.withResolvers<void>();
+  let attempts = 0, generations = 0;
+  const sent: string[] = [];
+  const service = new WorkflowService({ ...f.deps, generateReply: async () => { generations++; return 'the original draft'; },
+    x: { ...f.deps.x, reply: async (_identity, _postId, text) => { attempts++; sent.push(text);
+      if (attempts === 1) throw new Error('connection reset'); await gate.promise; return '200'; } } });
+  const w = f.repo.save({ ...f.input, actions: [{ type: 'follow' }, { type: 'notify', content: '' }, { type: 'reply', mode: 'skill' }] });
+  try {
+    await service.run(w.id);
+    assert.throws(() => service.retryOnce(w.id, retryInput(service, w.id)), /确认未发送/);
+    assert.equal(attempts, 1);
+    const input = retryInput(service, w.id, true), first = service.retryOnce(w.id, input)!;
+    assert.equal(service.retryOnce(w.id, input)?.id, first.id);
+    assert.equal(service.runOnce(w.id)?.id, first.id);
+    gate.resolve(); await service.run(w.id);
+    assert.equal(service.runs()[0]?.status, 'done');
+    assert.deepEqual(sent, ['the original draft', 'the original draft']); assert.equal(generations, 1);
+    assert.equal(f.calls.filter(c => c === 'follow').length, 1); assert.equal(f.calls.filter(c => c === 'notify').length, 1);
+    assert.deepEqual(f.repo.records(w.id)[0]?.actions.map(a => a.status), ['done', 'done', 'done']);
+    assert.equal(f.repo.get(w.id)?.lastError, null); assert.equal(f.repo.get(w.id)?.enabled, true);
+  } finally { gate.resolve(); await service.stop(); f.db.close(); }
+});
+
+for (const enabled of [true, false]) test(`safe AI retry preserves the original schedule choice (${enabled}) across repeated failures`, async () => {
+  const f = fixture(); let attempts = 0;
+  const service = new WorkflowService({ ...f.deps, generateReply: async () => {
+    if (++attempts < 3) throw new Error('AI timeout'); return 'new reply';
+  } });
+  const w = f.repo.save({ ...f.input, enabled, actions: [{ type: 'follow' }, { type: 'reply', mode: 'skill' }] });
+  try {
+    await service.run(w.id, true);
+    for (let i = 0; i < 2; i++) {
+      assert.equal(retryInput(service, w.id).restoreEnabled, enabled);
+      service.retryOnce(w.id, retryInput(service, w.id)); await service.run(w.id);
+    }
+    assert.equal(service.runs()[0]?.status, 'done'); assert.equal(f.repo.get(w.id)?.enabled, enabled);
+    assert.equal(f.calls.filter(c => c === 'follow').length, 1); assert.equal(f.calls.filter(c => c === 'reply').length, 1);
+    assert.equal(f.repo.records(w.id)[0]?.status, 'done');
+  } finally { await service.stop(); f.db.close(); }
+});
+
+test('retry endpoints validate the confirmed snapshot and recover a failure before any action record exists', async () => {
+  const f = fixture(), app = Fastify(); let attempts = 0;
+  f.deps.evaluateBatch = async (_condition, posts) => {
+    if (++attempts === 1) throw new Error('AI 504'); return posts.map(p => ({ postId: p.id, matched: false, message: '' }));
+  };
+  const w = f.repo.save(f.input), service = new WorkflowService(f.deps);
+  registerWorkflowRoutes(app, f.repo, service, f.settings);
+  app.setErrorHandler((error, _req, reply) => { reply.code(400).send({ error: String(error) }); });
+  try {
+    await service.run(w.id);
+    const plan = (await app.inject(`/api/workflows/${w.id}/retry`)).json().data;
+    assert.equal(plan.records.length, 0); assert.equal(attempts, 1);
+    const input = retryInput(service, w.id);
+    assert.equal((await app.inject({ method: 'POST', url: `/api/workflows/${w.id}/retry`, payload: { ...input, recordIds: ['stale'] } })).statusCode, 400);
+    assert.equal(attempts, 1);
+    assert.equal((await app.inject({ method: 'POST', url: `/api/workflows/${w.id}/retry`, payload: input })).statusCode, 202);
+    await service.run(w.id);
+    assert.equal(attempts, 2); assert.equal(f.repo.get(w.id)?.lastError, null);
+    assert.equal(service.runs()[0]?.status, 'done');
+    assert.equal((await app.inject({ method: 'POST', url: '/api/workflows/missing/retry', payload: input })).statusCode, 404);
+  } finally { await service.stop(); await app.close(); f.db.close(); }
+});
+
+test('retry rejects changed configuration and retains the original randomly selected execution account', async () => {
+  const f = fixture();
+  const second = f.settings.configuration.saveAccount({ name: 'Other', username: 'other', cookie: 'auth_token=test; ct0=test; twid=u%3D9', configIds: [] });
+  let random = 0, attempts = 0;
+  const ids: string[] = [];
+  const service = new WorkflowService({ ...f.deps, random: () => random,
+    x: { ...f.deps.x, follow: async identity => { ids.push(identity.cookieId); if (++attempts === 1) throw new Error('fetch failed'); return { following: true, followedBy: false }; } } });
+  const w = f.repo.save({ ...f.input, accountId: RANDOM_WORKFLOW_ACCOUNT, actions: [{ type: 'follow' }] });
+  try {
+    await service.run(w.id); random = 0.99;
+    const input = retryInput(service, w.id);
+    assert.notEqual(f.repo.records(w.id)[0]?.accountId, second.id);
+    assert.throws(() => service.retryOnce(w.id, { ...input, configuration: 'changed' }), /已变化/);
+    service.retryOnce(w.id, input); await service.run(w.id);
+    assert.deepEqual(ids, [f.input.accountId, f.input.accountId]);
+    assert.equal(service.runs()[0]?.status, 'done');
+  } finally { await service.stop(); f.db.close(); }
+});
+
+test('obsolete failures from a previous configuration do not block retrying the current failure', async () => {
+  const f = fixture(); let attempts = 0;
+  const service = new WorkflowService({ ...f.deps, x: { ...f.deps.x,
+    follow: async () => { if (++attempts === 1) throw new Error('current failure'); return { following: true, followedBy: false }; } } });
+  const w = f.repo.save({ ...f.input, actions: [{ type: 'follow' }] });
+  try {
+    await service.run(w.id);
+    const current = f.repo.records(w.id)[0]!;
+    f.repo.record({ ...current, id: 'old-record', resume: { ...current.resume!, configuration: 'old-configuration' },
+      actions: [{ type: 'follow', status: 'uncertain', result: 'previous failure' }] });
+    const input = retryInput(service, w.id);
+    assert.deepEqual(input.recordIds, [current.id]);
+    service.retryOnce(w.id, input); await service.run(w.id);
+    assert.equal(service.runs()[0]?.status, 'done'); assert.equal(attempts, 2);
+    assert.equal(f.repo.records(w.id).find(r => r.id === 'old-record')?.status, 'uncertain');
+  } finally { await service.stop(); f.db.close(); }
+});
+
+test('retry keeps the configured order when a failed notification precedes an unsent follow', async () => {
+  const f = fixture(), order: string[] = []; let failed = true;
+  const service = new WorkflowService({ ...f.deps,
+    notify: async () => { order.push('notify'); if (failed) throw new Error('notification failed'); },
+    x: { ...f.deps.x, follow: async () => { order.push('follow'); return { following: true, followedBy: false }; } } });
+  const w = f.repo.save({ ...f.input, actions: [{ type: 'notify', content: '' }, { type: 'follow' }] });
+  try {
+    await service.run(w.id); failed = false;
+    service.retryOnce(w.id, retryInput(service, w.id, true)); await service.run(w.id);
+    assert.deepEqual(order, ['notify', 'notify', 'follow']);
+    assert.equal(service.runs()[0]?.status, 'done');
+  } finally { await service.stop(); f.db.close(); }
 });

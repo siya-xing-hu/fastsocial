@@ -13,6 +13,7 @@ import {
 import { log, log_error } from "../../common/logging";
 import { config, TranslateChannelEnum } from "../../common/storage-config";
 import { confirmOperation } from '../ui/confirm-operation';
+import type { TranslationResult } from '../../common/translation';
 
 /**
  * 翻译文本内容
@@ -20,6 +21,15 @@ import { confirmOperation } from '../ui/confirm-operation';
  * @returns 翻译后的文本
  */
 export async function translateContent(channel: TranslateChannelEnum, text: string, isAdvanced: boolean): Promise<string> {
+  try {
+    return (await translateContentResult(channel, text, isAdvanced)).text;
+  } catch (error) {
+    log_error("Translation failed", error);
+    return "";
+  }
+}
+
+export async function translateContentResult(channel: TranslateChannelEnum, text: string, isAdvanced: boolean): Promise<TranslationResult> {
   const message: TranslateRuntimeMessage = {
     type: RuntimeMessageTypeEnum.TRANSLATE,
     data: {
@@ -31,8 +41,7 @@ export async function translateContent(channel: TranslateChannelEnum, text: stri
 
   const response = await sendRuntimeMessage(message);
   if (!response.is_ok) {
-    log_error("AI generate failed", response.error);
-    return "";
+    throw new Error(String(response.error));
   }
   return response.data;
 }

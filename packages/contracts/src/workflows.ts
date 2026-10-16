@@ -31,23 +31,47 @@ export interface Workflow extends WorkflowInput {
   /** Continue a capped Post scan before advancing its committed high-water mark. */
   postScan?: { cursor: string; newestPostId: string | null; accountId: string } | null;
   retryAt?: string | null;
+  /** Remember whether an action failure paused an enabled schedule. */
+  resumeEnabledAfterFailure?: boolean;
 }
 export interface WorkflowRecord {
   id: string;
   workflowId: string;
+  runId?: string;
   accountId?: string;
   accountName?: string;
   post: SocialPost;
   reason: string;
   status: "running" | "done" | "failed" | "uncertain" | "pending" | "skipped";
-  resume?: { configuration: string; userId: string; following: boolean | null };
+  resume?: { configuration: string; userId: string; following: boolean | null; actorId?: string };
   actions: Array<{
     type: WorkflowAction["type"];
     status: "pending" | "running" | "done" | "failed" | "uncertain" | "skipped";
     result?: string;
     newlyFollowed?: boolean;
+    /** Retain the exact draft for an explicitly confirmed manual resend. */
+    replyText?: string;
   }>;
   createdAt: string;
+}
+export interface WorkflowRetryPlan {
+  configuration: string;
+  analysisComplete: boolean;
+  run?: WorkflowRun;
+  revision?: number;
+  records: WorkflowRecord[];
+  restoreEnabled: boolean;
+}
+export interface WorkflowRetryInput {
+  configuration: string;
+  runId?: string;
+  revision?: number;
+  recordIds: string[];
+  confirmUncertain: boolean;
+  restoreEnabled: boolean;
+}
+export function workflowConfiguration(w: WorkflowInput): string {
+  return JSON.stringify([w.accountId, w.source, w.usernames, w.condition, w.actions]);
 }
 export interface WorkflowPreview {
   post: SocialPost;

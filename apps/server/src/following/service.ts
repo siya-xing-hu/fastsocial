@@ -61,13 +61,16 @@ export class FollowingService {
     if (entry.status === 'following') return continuingNewFollow ? null : '已经关注，跳过后续动作';
     return '关注记录待核对，跳过自动关注和回复';
   }
-  async follow(identity: OutreachIdentity, userId: string, username?: string, known?: XProfileRelationship, source: FollowingEntry['source'] = 'workflow') {
+  retryFollow(identity: OutreachIdentity, userId: string, username: string) {
+    return this.follow(identity, userId, username, undefined, 'workflow', true);
+  }
+  async follow(identity: OutreachIdentity, userId: string, username?: string, known?: XProfileRelationship, source: FollowingEntry['source'] = 'workflow', manualRetry = false) {
     if (!username) throw new Error('关注需要目标用户名以核对 Profile');
     return this.lock(identity.actorId, async () => {
       let entry = this.repo.find(identity.actorId, { id: userId, username });
       if (source === 'workflow') {
         const reason = this.followSkipReason(identity, userId, username);
-        if (reason) {
+        if (reason && !(manualRetry && entry && ['pending', 'uncertain'].includes(entry.status))) {
           trace('following.skipped', '跳过关注', { userId, username, reason });
           return { following: entry?.status === 'following', followedBy: entry?.followedBy ?? null, created: false, skipReason: reason };
         }
@@ -79,17 +82,17 @@ export class FollowingService {
       trace('following.relationship', '当前关注关系', { userId, username, following: state.following, followedBy: state.followedBy });
       if (state.following && !entry && source === 'workflow')
         return { following: true, followedBy: state.followedBy, created: false, skipReason: '已经关注，跳过后续动作' };
-      if (entry && ['pending', 'uncertain'].includes(entry.status) && !state?.following && !known)
+      if (entry && ['pending', 'uncertain'].includes(entry.status) && !state?.following && !known && !manualRetry)
         throw new Error('这位用户有待核对的关注记录，请先在关注列表刷新关系');
       entry = entry ?? this.repo.create(identity.actorId, state?.account ?? { id: userId, username, name: username, bio: '', fetchedAt: '' }, source);
       if (state) entry.user = state.account;
       if (state?.following) {
         this.confirm(entry, state);
-        if (source !== 'workflow') this.enqueue(identity.cookieId, entry.id);
+        if (source !== 'workflow' || manualRetry) this.enqueue(identity.cookieId, entry.id);
         return { following: true, followedBy: state.followedBy, created: false, skipReason: '已经关注，跳过后续动作' };
       }
       // Only a read can resolve a previous ambiguous request before another mutation is allowed.
-      const previous = state ? this.confirm(entry, state) : entry;
+      const previous = manualRetry && ['pending', 'uncertain'].includes(entry.status) ? entry : state ? this.confirm(entry, state) : entry;
       entry = this.repo.save({ ...previous, status: 'pending', error: null });
       try {
         const result = await this.x.follow(identity, userId, username);

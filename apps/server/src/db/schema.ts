@@ -43,6 +43,7 @@ export function initializeSchema(database: DatabaseSync): void {
       PRIMARY KEY(subject, day, action)
     ) STRICT;
     CREATE TABLE IF NOT EXISTS workflow_records (id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE, value TEXT NOT NULL) STRICT;
+    CREATE TABLE IF NOT EXISTS workflow_checkpoints (workflow_id TEXT PRIMARY KEY REFERENCES workflows(id) ON DELETE CASCADE, value TEXT NOT NULL) STRICT;
     CREATE TABLE IF NOT EXISTS following_users (
       id TEXT PRIMARY KEY, actor_id TEXT NOT NULL, target_id TEXT NOT NULL DEFAULT '',
       username TEXT NOT NULL COLLATE NOCASE, value TEXT NOT NULL

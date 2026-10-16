@@ -38,7 +38,7 @@ function harness(matcher?: BatchMatcher) {
   const w = repo.save({ name: 'Target listener', source: 'user', usernames: ['target'], accountId: actor.id, condition: 'all new', intervalMinutes: 5, enabled: true, actions: [{ type: 'notify', content: '' }] });
   const pages: Array<{ cursor?: string; surface?: string }> = [];
   let pageOverride: ((cursor?: string, surface?: string) => TimelinePage) | undefined;
-  const state = { posts: [post('1'), post('2')], fail: false, fetchFail: false, profileReads: 0, bio: 'AI developer', beforeResult: (() => {}) as () => void | Promise<void> };
+  const state = { posts: [post('1'), post('2')], fail: false, fetchFail: false, notifyFailure: '', profileReads: 0, bio: 'AI developer', beforeResult: (() => {}) as () => void | Promise<void> };
   const calls: BatchInput[] = [], cookies: (string | undefined)[] = [], sent: string[] = [], replyProfiles: string[] = [];
   const runner = new MonitorRunner({ accounts, monitors: new MonitorRepository(db), telegram: {} as TelegramNotifier,
     social: {
@@ -61,14 +61,15 @@ function harness(matcher?: BatchMatcher) {
         decisions: input.rules.flatMap(rule => rule.postIds.map(postId => ({ postId, ruleId: rule.id, status: 'match', reason: '结合画像命中', evidenceIds: [postId] }))) };
     } } as unknown as BatchMatcher,
   });
-  const service = new WorkflowService({ repository: repo, settings, userListener: runner,
+  const serviceDeps: ConstructorParameters<typeof WorkflowService>[0] = { repository: repo, settings, userListener: runner,
     x: { identity: id => ({ actorId: '1', cookieId: id }), home: async () => [], follow: async () => ({ following: true, followedBy: false }), reply: async (_identity, id) => { sent.push('reply:' + id); return '999'; }, relationship: async () => ({ following: false, followedBy: false }) },
     timeline: async () => { throw new Error('Must use profile-aware batches'); }, userId: async () => 'target-id',
     evaluateBatch: async () => { throw new Error('Must use profile-aware batches'); }, generate: async () => '',
     generateReply: async (_id, _post, _action, profile) => { replyProfiles.push(profile?.memory.recent?.text ?? 'missing'); return 'Reply'; },
-    notify: async (_text, p) => { sent.push(p.id); },
-  });
-  return { db, repo, accounts, settings, actor, w, state, calls, cookies, sent, runner, service, replyProfiles, pages, overridePages: (read: typeof pageOverride) => { pageOverride = read; } };
+    notify: async (_text, p) => { if (p.id === state.notifyFailure) throw new Error('mock notification failure'); sent.push(p.id); },
+  };
+  const service = new WorkflowService(serviceDeps);
+  return { db, repo, accounts, settings, actor, w, serviceDeps, state, calls, cookies, sent, runner, service, replyProfiles, pages, overridePages: (read: typeof pageOverride) => { pageOverride = read; } };
 }
 
 test('single-user runs never generate portraits and replies use only the manually saved portrait', async () => {
@@ -87,8 +88,36 @@ test('single-user runs never generate portraits and replies use only the manuall
     assert.deepEqual(h.accounts.profile('target-id'), saved); assert.equal(h.repo.get(h.w.id)?.lastSeenPostId, '3');
     assert.ok(h.cookies.every(cookie => cookie === h.actor.id));
     await h.service.run(h.w.id); assert.deepEqual(h.sent, ['reply:3', '3']); assert.equal(h.calls.length, 3);
-    const view = h.service.profile(h.w.id); assert.equal(view.evidence[0]?.id, '2');
+    const view = h.service.profile(h.w.id); assert.deepEqual(view.evidence.map(p => p.id), ['1', '2']);
   } finally { await h.service.stop(); h.db.close(); }
+});
+
+test('single-user round resumes saved decisions and commits its original Post boundary only after the entire queue succeeds', async () => {
+  const h = harness(); let service = h.service;
+  try {
+    h.state.posts.push(post('3')); h.state.notifyFailure = '2';
+    await service.run(h.w.id);
+    const original = service.runs()[0]!;
+    assert.deepEqual([original.scanned, original.aiMatched, original.completed], [3, 3, 1]);
+    assert.deepEqual(h.sent, ['1']); assert.equal(h.repo.get(h.w.id)?.lastSeenPostId, null);
+    assert.deepEqual(h.repo.pending(h.w.id).map(r => r.post.id), ['3']);
+    const pages = h.pages.length, ai = h.calls.length;
+    h.state.posts.push(post('4')); h.state.notifyFailure = '';
+    await service.stop(); service = new WorkflowService(h.serviceDeps);
+    const plan = service.retryPlan(h.w.id);
+    service.retryOnce(h.w.id, { configuration: plan.configuration, runId: plan.run?.id, revision: plan.revision,
+      recordIds: plan.records.map(r => r.id), restoreEnabled: plan.restoreEnabled, confirmUncertain: true });
+    await service.run(h.w.id);
+    assert.deepEqual(h.sent, ['1', '2', '3']);
+    assert.deepEqual([h.pages.length, h.calls.length], [pages, ai]);
+    assert.equal(h.repo.get(h.w.id)?.lastSeenPostId, '3');
+    assert.equal(h.accounts.status(h.w.id)?.phase, 'done'); assert.equal(h.accounts.status(h.w.id)?.error, null);
+    assert.deepEqual([service.runs()[0]?.id, service.runs()[0]?.scanned, service.runs()[0]?.aiMatched, service.runs()[0]?.completed], [original.id, 3, 3, 3]);
+    assert.equal(h.accounts.profile('target-id'), null);
+    await service.run(h.w.id);
+    assert.deepEqual(h.sent, ['1', '2', '3', '4']);
+    assert.equal(h.repo.get(h.w.id)?.lastSeenPostId, '4');
+  } finally { await service.stop(); h.db.close(); }
 });
 test('sparse AI hits mark the entire valid batch processed, while malformed output leaves it pending', async () => {
   for (const output of ['{"matches":[]}', 'one-hit', '{"matches":[']) {
@@ -325,7 +354,7 @@ test('manual rebuild uses a fresh Profile and latest 10 posts without consuming 
     assert.deepEqual(input.memory, {}); assert.deepEqual(input.context, []); assert.deepEqual(input.rules, []);
     assert.deepEqual(input.posts.map(p => p.id), Array.from({ length: 10 }, (_, i) => String(i + 21)));
     assert.equal(view.profile?.version, before.version + 1); assert.equal(view.profile?.memory.topics, undefined);
-    assert.equal(view.profile?.memory.recent?.text, '最近讨论 30'); assert.equal(view.evidence[0]?.id, '30');
+    assert.equal(view.profile?.memory.recent?.text, '最近讨论 30'); assert.deepEqual(view.evidence.map(p => p.id), input.posts.map(p => p.id));
     assert.deepEqual(h.repo.get(h.w.id), workflow); assert.deepEqual(h.accounts.status(h.w.id), status);
     assert.deepEqual(h.accounts.decisions(h.w.id), decisions); assert.deepEqual(h.repo.records(h.w.id), records); assert.deepEqual(h.sent, []);
     assert.equal(h.repo.seen(h.w.id, '30'), false); assert.ok(h.cookies.every(cookie => cookie === h.actor.id));
@@ -354,7 +383,7 @@ test('long multiline manual portraits persist verbatim with their evidence and w
     assert.deepEqual(h.repo.get(h.w.id), workflow);
     const rebuilt = await h.service.rebuildProfile(h.w.id);
     assert.equal(rebuilt.profile?.portraitText, undefined);
-    assert.equal(rebuilt.profile?.evidenceIds, undefined);
+    assert.deepEqual(rebuilt.profile?.evidenceIds, ['1', '2']);
   } finally { await h.service.stop(); await app.close(); h.db.close(); }
 });
 test('portrait refresh route can initialize a paused listener without actions, while rejecting missing or home workflows', async () => {
@@ -447,8 +476,7 @@ test('streamed portrait refresh commits only completed content and keeps old evi
   let broken = false, requests = 0;
   const client = new OpenAICompatibleClient(async (_url, init) => {
     requests++; const body = JSON.parse(String(init?.body)); assert.equal(body.stream, true);
-    const input = JSON.parse(body.messages[1].content);
-    const content = JSON.stringify({memory: {topics: {text: '画像版本 ' + requests, kind: 'explicit', evidenceIds: [input.posts.at(-1).id]}}});
+    const content = JSON.stringify({memory: {background: {text: '画像版本 ' + requests, evidenceIds: ['bio', 'made-up']}}});
     return new Response(`data: ${JSON.stringify({choices: [{delta: {content}}]})}\n\n` + (broken ? '' : 'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'), {headers: {'content-type': 'text/event-stream'}});
   });
   const h = harness(new BatchMatcher({complete: (_provider, messages, maxOutputTokens) => client.complete({
@@ -456,13 +484,15 @@ test('streamed portrait refresh commits only completed content and keeps old evi
     model: {name: 'model'}, messages, maxOutputTokens,
   })} as AIGateway));
   try {
-    const first = await h.service.rebuildProfile(h.w.id); assert.equal(first.profile?.memory.topics?.text, '画像版本 1');
+    const first = await h.service.rebuildProfile(h.w.id); assert.equal(first.profile?.memory.background?.text, '画像版本 1');
+    assert.deepEqual(first.profile?.memory.background?.evidenceIds, []);
+    assert.deepEqual(first.evidence.map(p => p.id), ['1', '2']);
     h.state.posts.push(post('3')); const workflow = h.repo.get(h.w.id);
     broken = true; await assert.rejects(h.service.rebuildProfile(h.w.id), /未完整结束/);
     assert.deepEqual(h.accounts.profile('target-id'), first.profile);
     assert.deepEqual(h.service.profile(h.w.id).evidence, first.evidence); assert.deepEqual(h.repo.get(h.w.id), workflow);
     assert.deepEqual(h.sent, []); assert.equal(requests, 2);
     broken = false; const next = await h.service.rebuildProfile(h.w.id);
-    assert.equal(next.profile?.memory.topics?.text, '画像版本 3'); assert.equal(next.evidence[0]?.id, '3');
+    assert.equal(next.profile?.memory.background?.text, '画像版本 3'); assert.deepEqual(next.evidence.map(p => p.id), ['1', '2', '3']);
   } finally { await h.service.stop(); h.db.close(); }
 });

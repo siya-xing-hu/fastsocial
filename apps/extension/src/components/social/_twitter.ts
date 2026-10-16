@@ -1,42 +1,35 @@
 import { log_error } from "../../common/logging";
 import { config } from "../../common/storage-config";
-import { translateContent } from "../translate/text-translator";
+import { translateContentResult } from "../translate/text-translator";
+import type { TranslationProvider } from '../../common/translation';
 import type { AccountConfiguration } from "@fast-social/contracts";
 import { resolveAccountPolicy, xAccountIdentity } from "../../common/account-policy";
 import { requestLocalService } from "../../common/local-service";
 import { LocalServiceError } from "../../common/local-service-error";
+import { createXTranslator, observeXDom } from "./x-translation";
+import { h, render } from 'vue';
+import { Sparkles } from 'lucide-vue-next';
+
+// Brand marks from Simple Icons (CC0): https://github.com/simple-icons/simple-icons
+const providerIcons = {
+  google: { label: 'Google 翻译', color: '#4285f4', path: 'M22.401 4.818h-9.927L10.927 0H1.599C.72 0 .002.719.002 1.599v16.275c0 .878.72 1.597 1.597 1.597h10L13.072 24H22.4c.878 0 1.597-.707 1.597-1.572V6.39c0-.865-.72-1.572-1.597-1.572zm-15.66 8.68c-2.07 0-3.75-1.68-3.75-3.75 0-2.07 1.68-3.75 3.75-3.75 1.012 0 1.86.375 2.512.976l-.99.952a2.194 2.194 0 0 0-1.522-.584c-1.305 0-2.363 1.08-2.363 2.409S5.436 12.16 6.74 12.16c1.507 0 2.13-1.08 2.19-1.808l-2.188-.002V9.066h3.51c.05.23.09.457.09.764 0 2.147-1.434 3.669-3.602 3.669zm16.757 8.93c0 .59-.492 1.072-1.097 1.072h-8.875l3.649-4.03h.005l-.74-2.302.006-.005s.568-.488 1.277-1.24c.712.771 1.63 1.699 2.818 2.805l.771-.772c-1.272-1.154-2.204-2.07-2.89-2.805.919-1.087 1.852-2.455 2.049-3.707h2.034v.002h.002v-.94h-4.532v-1.52h-1.471v1.52H14.3l-1.672-5.21.006.022h9.767c.605 0 1.097.48 1.097 1.072v16.038zm-6.484-7.311c-.536.548-.943.873-.943.873l-.008.004-1.46-4.548h4.764c-.307 1.084-.988 2.108-1.651 2.904-1.176-1.392-1.18-1.844-1.18-1.844h-1.222s.05.678 1.7 2.61z' },
+  deepl: { label: 'DeepL 翻译', color: '#0f2b46', path: 'M20.907 4.93953 12.68543.18573a1.3577 1.3577 0 0 0-1.3709 0L3.09298 4.9565a1.3766 1.3766 0 0 0-.68639 1.18233v9.52646a1.3766 1.3766 0 0 0 .68639 1.19363l8.22157 4.75946.06223.03583 4.04856 2.3458-.01131-2.06106.0075-1.1446.0038.01885v-.38467c0-.23006.1188-.43371.29605-.56005l.264-.15086.12633-.06977h-.0075l4.80283-2.7795a1.3803 1.3803 0 0 0 .68639-1.19551V6.13505a1.3803 1.3803 0 0 0-.68642-1.19552m-9.85269 9.68863a1.4275 1.4275 0 0 1-.39976 1.3841 1.4086 1.4086 0 0 1-1.97054 0 1.4199 1.4199 0 0 1 0-2.06294 1.4086 1.4086 0 0 1 2.0422.07543l3.32822-1.91585.6864.38656zm5.77019-2.41367a1.4086 1.4086 0 0 1-1.97054 0 1.4256 1.4256 0 0 1-.3696-1.47837l-.0132.0075-3.7525-2.1723-.05657.05656a1.4086 1.4086 0 0 1-1.97053 0 1.4199 1.4199 0 0 1 0-2.06293 1.4086 1.4086 0 0 1 1.97242 0c.3941.37713.52422.91832.39033 1.40672l3.7808 2.20059.01886-.01886a1.4086 1.4086 0 0 1 1.97242 0 1.42746 1.42746 0 0 1 0 2.06105z' },
+  ai: { label: 'AI 翻译', color: '#475569' },
+};
 
 // 扩展 HTMLElement 接口以支持定时器属性
 interface ExtendedHTMLElement extends HTMLElement {
   _hideTimer?: NodeJS.Timeout | null;
+  _leaveTimer?: number;
 }
 
-// 定义翻译缓存接口
-interface TranslateCache {
-  id: string;
-  originalText: string;
-  translatedText: string;
-  element: HTMLElement;
-}
-
-// 存储翻译缓存
-const translateCache: Map<string, TranslateCache> = new Map();
+let translator: ReturnType<typeof createXTranslator> | undefined;
 let twitterGeneration = 0;
 let runtimeTimer: number | undefined;
 let activeAutoTranslate = false;
-let policyVersion = 0;
 let stopTranslateObserver: (() => void) | null = null;
 let translateTooltip: ExtendedHTMLElement | null = null;
 let areTranslateTooltipListenersInstalled = false;
-
-interface TranslationBinding {
-  tweetId: string;
-  mouseEnterHandler: (event: Event) => void;
-  mouseLeaveHandler: () => void;
-  mouseMoveHandler: (event: Event) => void;
-}
-
-const translationBindings = new Map<HTMLElement, TranslationBinding>();
 
 // 创建翻译提示框
 function createTranslateTooltip(): ExtendedHTMLElement {
@@ -54,18 +47,18 @@ function createTranslateTooltip(): ExtendedHTMLElement {
   // 创建一个简单的DOM结构，使用固定的白底黑字样式，不受页面主题影响
   tooltip.innerHTML = `
     <div style="background-color: white; color: #333; border-radius: 0.5rem; padding: 0.75rem; margin: 0.5rem 0; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);">
-      <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-        <svg xmlns="http://www.w3.org/2000/svg" style="height: 1rem; width: 1rem; color: #666;" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M7 2a1 1 0 011 1v1h3a1 1 0 110 2H9.578a18.87 18.87 0 01-1.724 4.78c.29.354.596.696.914 1.026a1 1 0 11-1.44 1.389 21.034 21.034 0 01-.554-.6 19.098 19.098 0 01-3.107 3.567 1 1 0 01-1.334-1.49 17.087 17.087 0 003.13-3.733 18.992 18.992 0 01-1.487-2.494 1 1 0 111.79-.89c.234.47.489.928.764 1.372.417-.934.752-1.913.997-2.927H3a1 1 0 110-2h3V3a1 1 0 011-1zm6 6a1 1 0 01.894.553l2.991 5.982a.869.869 0 01.02.037l.99 1.98a1 1 0 11-1.79.895L15.383 16h-4.764l-.724 1.447a1 1 0 11-1.788-.894l.99-1.98.019-.038 2.99-5.982A1 1 0 0113 8zm-1.382 6h2.764L13 11.236 11.618 14z" clip-rule="evenodd" />
-        </svg>
-      </div>
+      <span class="translate-provider" role="img" style="display: none; align-items: center; justify-content: center; width: 18px; height: 18px; margin-bottom: 0.5rem;"></span>
       <span style="display: block; white-space: pre-wrap; line-height: 1.5; font-size: 0.875rem; color: #333;" class="translate-content"></span>
     </div>
   `;
 
+  // Allow the pointer to cross the gap and hover over the provider's title.
+  tooltip.addEventListener('mouseenter', () => window.clearTimeout(tooltip._leaveTimer));
+  tooltip.addEventListener('mouseleave', () => hideTranslateTooltip(tooltip));
   translateTooltip = tooltip;
   if (!areTranslateTooltipListenersInstalled) {
     const hideCurrentTooltip = () => {
+      translator?.dismiss();
       if (translateTooltip) hideTranslateTooltip(translateTooltip);
     };
     document.addEventListener("visibilitychange", () => {
@@ -89,13 +82,28 @@ function showTranslateTooltip(
   text: string,
   x: number,
   y: number,
+  provider?: TranslationProvider,
 ) {
-  console.log("显示翻译提示框:", text);
-
+  window.clearTimeout(tooltip._leaveTimer);
   // 直接更新内容
   const contentElement = tooltip.querySelector(".translate-content");
   if (contentElement) {
     contentElement.textContent = text;
+  }
+  const badge = tooltip.querySelector<HTMLElement>('.translate-provider');
+  if (badge) {
+    const icon = provider ? providerIcons[provider] : undefined;
+    badge.title = icon?.label ?? '';
+    badge.setAttribute('aria-label', icon?.label ?? '');
+    badge.style.display = icon ? 'flex' : 'none';
+    badge.style.color = icon?.color ?? '';
+    if (badge.dataset.provider !== (provider ?? '')) {
+      const attrs = { width: 18, height: 18, 'aria-hidden': true, focusable: 'false', style: 'display: block' };
+      render(provider === 'ai' ? h(Sparkles, attrs)
+        : provider ? h('svg', { ...attrs, viewBox: '0 0 24 24', fill: 'currentColor' },
+          [h('path', { d: providerIcons[provider].path })]) : null, badge);
+      badge.dataset.provider = provider ?? '';
+    }
   }
 
   tooltip.style.display = "block";
@@ -115,6 +123,7 @@ function showTranslateTooltip(
 
 // 隐藏翻译提示框
 function hideTranslateTooltip(tooltip: ExtendedHTMLElement) {
+  window.clearTimeout(tooltip._leaveTimer);
   tooltip.style.display = "none";
   
   // 清除定时器
@@ -157,147 +166,38 @@ export async function ttTwitterInit(url: string): Promise<void> {
     const nextSignature = JSON.stringify({ autoTranslate: policy.autoTranslate });
     if (nextSignature === signature) return;
     signature = nextSignature;
-    policyVersion++;
     activeAutoTranslate = policy.autoTranslate;
     resetTwitterTranslations();
     if (activeAutoTranslate) ttTwitterTranslate(generation);
   };
-  stopTranslateObserver = observeXDom(generation, () => {
+  stopTranslateObserver = observeXDom(document.body, () => {
+    if (generation !== twitterGeneration) return;
     if (JSON.stringify(currentAccount()) !== identity) { void ttTwitterInit(window.location.href); return; }
-    cleanupDisconnectedTranslations();
     if (activeAutoTranslate) ttTwitterTranslate(generation);
   });
   await refresh();
   if (generation === twitterGeneration) runtimeTimer = window.setInterval(() => { void refresh(); }, 15_000);
 }
 
-function observeXDom(
-  generation: number,
-  callback: () => void,
-  debounceMs = 150,
-): () => void {
-  let timeoutId: number | undefined;
-  const observer = new MutationObserver(() => {
-    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
-    timeoutId = window.setTimeout(() => {
-      timeoutId = undefined;
-      if (generation === twitterGeneration) callback();
-    }, debounceMs);
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
-
-  return () => {
-    observer.disconnect();
-    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
-  };
-}
-
-function cleanupTranslationBinding(tweetWrapper: HTMLElement): void {
-  const binding = translationBindings.get(tweetWrapper);
-  if (!binding) return;
-
-  tweetWrapper.removeEventListener("mouseenter", binding.mouseEnterHandler);
-  tweetWrapper.removeEventListener("mouseleave", binding.mouseLeaveHandler);
-  tweetWrapper.removeEventListener("mousemove", binding.mouseMoveHandler);
-  tweetWrapper.removeAttribute("data-has-translator");
-  translateCache.delete(binding.tweetId);
-  translationBindings.delete(tweetWrapper);
-}
-
-function cleanupDisconnectedTranslations(): void {
-  for (const tweetWrapper of translationBindings.keys()) {
-    if (!tweetWrapper.isConnected) cleanupTranslationBinding(tweetWrapper);
-  }
-}
-
 function resetTwitterTranslations(): void {
-  for (const tweetWrapper of [...translationBindings.keys()]) {
-    cleanupTranslationBinding(tweetWrapper);
-  }
-  document
-    .querySelectorAll('[data-has-translator="true"]')
-    .forEach((element) => element.removeAttribute("data-has-translator"));
-  translateCache.clear();
+  translator?.stop(); translator = undefined;
   if (translateTooltip) hideTranslateTooltip(translateTooltip);
 }
 
 function ttTwitterTranslate(generation: number): void {
-  if (generation !== twitterGeneration) return;
-
-  const version = policyVersion;
-  const target = config.value.basic.targetLang.toLowerCase().split('-')[0];
-  const tweetWrapperList = [...document.querySelectorAll<HTMLElement>(
-    'main[role="main"] article[role="article"] div[lang]:not([data-has-translator="true"])',
-  )].filter(el => !el.lang.toLowerCase().startsWith(target));
-  if (tweetWrapperList.length === 0) return;
-
-  const tooltip = createTranslateTooltip();
-  for (const tweetWrapper of tweetWrapperList) {
-    if (generation !== twitterGeneration) return;
-    if (translationBindings.has(tweetWrapper)) continue;
-
-    const textContents = [...tweetWrapper.children]
-      .filter((child) => child.tagName === "SPAN")
-      .map((span) => span.textContent?.trim() ?? "")
-      .filter(Boolean);
-    if (textContents.length === 0) continue;
-
-    const originalText = textContents.join(" ");
-    const tweetId = tweetWrapper.getAttribute("id")
-      || `fast-social-${Math.random().toString(36).slice(2, 11)}`;
-
-    const mouseEnterHandler = (event: Event) => {
-      const cache = translateCache.get(tweetId);
-      if (!cache) return;
-      const mouseEvent = event as MouseEvent;
-      showTranslateTooltip(
-        tooltip,
-        cache.translatedText,
-        mouseEvent.clientX + 10,
-        mouseEvent.clientY + 10,
-      );
-    };
-    const mouseLeaveHandler = () => hideTranslateTooltip(tooltip);
-    const mouseMoveHandler = (event: Event) => {
-      const cache = translateCache.get(tweetId);
-      if (!cache || tooltip.style.display !== "block") return;
-      const mouseEvent = event as MouseEvent;
-      showTranslateTooltip(
-        tooltip,
-        cache.translatedText,
-        mouseEvent.clientX + 10,
-        mouseEvent.clientY + 10,
-      );
-    };
-
-    tweetWrapper.setAttribute("data-has-translator", "true");
-    tweetWrapper.addEventListener("mouseenter", mouseEnterHandler);
-    tweetWrapper.addEventListener("mouseleave", mouseLeaveHandler);
-    tweetWrapper.addEventListener("mousemove", mouseMoveHandler);
-    translationBindings.set(tweetWrapper, {
-      tweetId,
-      mouseEnterHandler,
-      mouseLeaveHandler,
-      mouseMoveHandler,
+  if (generation !== twitterGeneration || !activeAutoTranslate) return;
+  if (!translator) {
+    const tooltip = createTranslateTooltip();
+    translator = createXTranslator({
+      document, targetLanguage: config.value.basic.targetLang,
+      translate: text => translateContentResult(config.value.basic.translateProvider, text, false),
+      show: (text, x, y, provider) => showTranslateTooltip(tooltip, text, x, y, provider),
+      hide: () => {
+        window.clearTimeout(tooltip._leaveTimer);
+        tooltip._leaveTimer = window.setTimeout(() => hideTranslateTooltip(tooltip), 150);
+      },
+      onError: error => log_error('Translate tweet failed', error),
     });
-
-    void translateContent(config.value.basic.translateProvider, originalText, false)
-      .then((translatedText) => {
-        if (
-          generation !== twitterGeneration
-          || version !== policyVersion
-          || !activeAutoTranslate
-          || !translatedText
-          || !tweetWrapper.isConnected
-          || !translationBindings.has(tweetWrapper)
-        ) return;
-        translateCache.set(tweetId, {
-          id: tweetId,
-          originalText,
-          translatedText,
-          element: tweetWrapper,
-        });
-      })
-      .catch((error) => log_error("Translate tweet failed", error));
   }
+  translator.scan();
 }
