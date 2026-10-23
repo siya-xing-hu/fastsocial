@@ -3,6 +3,7 @@ import type { AIGateway } from '../ai/ai-gateway.ts';
 import { estimateTokens, INPUT_BUDGET, MAX_BATCH_POSTS } from '../ai/batch-matcher.ts';
 import type { ReportAnalysisProgress } from './progress.ts';
 import { withTrace } from '../observability/trace.ts';
+import { parseAIJson } from '../ai/response-content.ts';
 
 export interface WorkflowDecision extends AIMatchResult { postId: string }
 
@@ -56,7 +57,7 @@ export class WorkflowMatcher {
 
 export function parseWorkflowDecisions(raw: string, posts: SocialPost[]): WorkflowDecision[] {
   let value: { matches?: unknown } | null;
-  try { value = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')); }
+  try { value = parseAIJson(raw) as { matches?: unknown } | null; }
   catch { throw new Error('AI 批量判断不是有效 JSON，监听进度保持不变'); }
   if (!value || !Array.isArray(value.matches) || Object.keys(value).some(key => key !== 'matches')) throw new Error('AI 批量判断只允许 matches 数组，监听进度保持不变');
   const expected = new Set(posts.map(post => post.id));

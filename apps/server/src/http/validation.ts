@@ -130,7 +130,7 @@ function validateAIService(value: unknown): AIServiceConfig {
   }
   if (typeof value.enabled !== "boolean") throw new ValidationError("AI 服务启用状态无效");
   const apiFormat = value.apiFormat ?? "openai";
-  if (apiFormat !== "openai" && apiFormat !== "anthropic") {
+  if (apiFormat !== "openai" && apiFormat !== "responses" && apiFormat !== "anthropic") {
     throw new ValidationError("AI 接口格式无效");
   }
   const models = value.models.map((model) => {

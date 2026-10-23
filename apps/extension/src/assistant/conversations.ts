@@ -1,4 +1,4 @@
-import { assistantPageReference, type AssistantContext, type AssistantTurn, type SkillKey, type DraftValidation } from "@fast-social/contracts";
+import { assistantPageReference, type AssistantContext, type AssistantTurn, type SkillKey, type DraftValidation, type PostTemplateSelection, type PostTemplateSummary } from "@fast-social/contracts";
 
 export interface ChatMessage extends AssistantTurn {
   id: string;
@@ -8,6 +8,8 @@ export interface ChatMessage extends AssistantTurn {
   validation?: DraftValidation;
   context?: AssistantContext;
   error?: string;
+  postTemplate?: PostTemplateSelection;
+  appliedPostTemplate?: PostTemplateSummary;
 }
 export interface Conversation {
   version: 1;
@@ -19,6 +21,8 @@ export interface Conversation {
   messages: ChatMessage[];
   draft: string;
   pending: string | null;
+  postTemplateId?: string;
+  postTemplateRevision?: string;
 }
 interface StorageArea {
   get(keys: string | null): Promise<Record<string, unknown>>;
@@ -34,6 +38,9 @@ export function newConversation(account: Account = null): Conversation {
 }
 export function conversationTitle(text: string): string {
   return text.replace(/^\/(summary|post|reply)\s*/, "").replace(/\s+/g, " ").trim().slice(0, 36) || "新会话";
+}
+export function conversationHasContent(conversation: Conversation): boolean {
+  return !!(conversation.messages.length || conversation.draft.trim() || conversation.postTemplateId);
 }
 export function sameAccount(a: AssistantContext["account"] | null, b: AssistantContext["account"] | null): boolean {
   if (!a || !b) return !(a?.actorId || a?.username || b?.actorId || b?.username);

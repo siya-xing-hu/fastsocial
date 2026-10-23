@@ -1,10 +1,11 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { measurePost, postingPolicy, type PostingPolicy, type AssistantCatalog, type AssistantChatResult, type AssistantContext, type SkillKey } from "@fast-social/contracts";
+import { measurePost, postingPolicy, type PostingPolicy, type AssistantCatalog, type AssistantChatResult, type AssistantContext, type SkillKey, type PostTemplateSelection } from "@fast-social/contracts";
 import { config, initConfig } from "../../common/storage-config";
 import { requestLocalService } from "../../common/local-service";
 import { LocalServiceClient } from "../../background/local-service-client";
 import { draftError, parseSkillCommand } from "../../assistant/context-guard";
-import { ConversationStore, conversationTitle, conversationReference, draftContext, newConversation, requestHistory, sameAccount, type ChatMessage, type Conversation } from "../../assistant/conversations";
+import { ConversationStore, conversationHasContent, conversationTitle, conversationReference, draftContext, newConversation, requestHistory, sameAccount, type ChatMessage, type Conversation } from "../../assistant/conversations";
+import { freezePostTemplateSelection, showPostTemplateSelection, validatePostTemplateSelection } from '../../assistant/post-template-selection';
 import { commandKey, skillQuery } from "../../assistant/skill-commands";
 import { confirmOperation } from '../../components/ui/confirm-operation';
 
@@ -18,7 +19,7 @@ export function useAssistant() {
   const inputElement = ref<HTMLTextAreaElement>(), chatArea = ref<HTMLElement>();
   const selectedCommand = ref(0), caret = ref(0), menuDismissed = ref(false);
   const runningSkill = ref<SkillKey>();
-  let windowId: number | undefined, ownerTabId: number | undefined, readVersion = 0, disposed = false;
+  let windowId: number | undefined, ownerTabId: number | undefined, readVersion = 0, catalogVersion = 0, disposed = false;
   let draftTimer: ReturnType<typeof setTimeout> | undefined;
   let accountQueue = Promise.resolve(), accountInitialized = false;
   const messageOf = (e: unknown) => e instanceof Error ? e.message : String(e);
@@ -33,6 +34,37 @@ export function useAssistant() {
   const messages = computed(() => current.value.messages);
   const explicitSkill = computed(() => parseSkillCommand(input.value).skill);
   const lastSkill = computed(() => [...messages.value].reverse().find(m => m.role === 'assistant')?.skill);
+  const postTemplates = computed(() => catalog.value?.postTemplates ?? []);
+  const showPostTemplates = computed(() => showPostTemplateSelection(explicitSkill.value, lastSkill.value));
+  const selectedPostTemplateId = computed({
+    get: () => current.value.postTemplateId ?? '',
+    set: (value: string) => {
+      if (busy.value || !ready.value) return;
+      if (value) {
+        const template = postTemplates.value.find(item => item.id === value);
+        if (!template?.revision) { error.value = '所选发帖模板已失效或无法读取，请重新选择模板后发送。'; return; }
+        current.value.postTemplateId = template.id;
+        current.value.postTemplateRevision = template.revision;
+      } else {
+        delete current.value.postTemplateId;
+        delete current.value.postTemplateRevision;
+      }
+      const conversation = current.value;
+      void persist(conversation).catch(e => { error.value = messageOf(e); });
+    },
+  });
+  const postTemplateSelectionNotice = computed(() => {
+    if (!selectedPostTemplateId.value) return '';
+    const template = postTemplates.value.find(item => item.id === selectedPostTemplateId.value);
+    if (!template) return '所选模板已失效';
+    return template.revision === current.value.postTemplateRevision ? '' : '所选模板已更新，请重新选择';
+  });
+  // Keep a stale reference in storage while letting the same real ID be selected
+  // again through a distinct UI value. Updating the library never changes consent.
+  const postTemplateChoice = computed({
+    get: () => postTemplateSelectionNotice.value ? `stale:${selectedPostTemplateId.value}` : selectedPostTemplateId.value,
+    set: (value: string) => { if (!value.startsWith('stale:')) selectedPostTemplateId.value = value; },
+  });
   const skillName = (key: SkillKey) => skills.value.find(s => s.key === key)?.name ?? fallbackSkills.find(s => s.key === key)?.name ?? key;
   const query = computed(() => skillQuery(input.value, caret.value));
   const matchingSkills = computed(() => query.value === null ? [] : skills.value.filter(s => s.key.startsWith(query.value!)));
@@ -50,7 +82,7 @@ export function useAssistant() {
     conversations.value = [snapshot, ...conversations.value.filter(c => c.id !== snapshot.id)].sort((a, b) => b.updatedAt - a.updatedAt);
   }
   async function persist(conversation = current.value): Promise<void> {
-    if (!conversation.messages.length && !conversation.draft.trim()) {
+    if (!conversationHasContent(conversation)) {
       if (conversations.value.some(c => c.id === conversation.id)) {
         await store.remove(conversation.id);
         conversations.value = conversations.value.filter(c => c.id !== conversation.id);
@@ -91,6 +123,7 @@ export function useAssistant() {
       const changeAccount = accountQueue.catch(() => {}).then(async () => {
         if (version !== readVersion || disposed) return;
         if (!accountInitialized || !sameAccount(current.value.account, snapshot.account)) {
+          catalogVersion++; catalog.value = null;
           const wasReady = ready.value;
           ready.value = false;
           try {
@@ -124,10 +157,19 @@ export function useAssistant() {
     }
   }
   async function loadCatalog() {
-    const identity = context.value?.account ?? { actorId: "", username: "" };
+    const identity = { ...(context.value?.account ?? { actorId: "", username: "" }) };
+    const version = ++catalogVersion, conversationId = current.value.id;
+    const currentScope = () => !disposed && current.value.id === conversationId
+      && sameAccount(context.value?.account ?? null, identity) && sameAccount(current.value.account, identity);
     try {
-      catalog.value = await requestLocalService<AssistantCatalog>("/api/assistant/catalog?" + new URLSearchParams({ actorId: identity.actorId, username: identity.username }));
-    } catch { catalog.value = null; }
+      const loaded = await requestLocalService<AssistantCatalog>("/api/assistant/catalog?" + new URLSearchParams({ actorId: identity.actorId, username: identity.username }));
+      if (!currentScope()) return null;
+      if (version === catalogVersion) catalog.value = loaded;
+      return loaded;
+    } catch {
+      if (currentScope() && version === catalogVersion) catalog.value = null;
+      return null;
+    }
   }
   async function focusInput() { await nextTick(); resizeInput(); inputElement.value?.focus(); }
   async function startNew() {
@@ -202,21 +244,32 @@ export function useAssistant() {
     if (command.error) { error.value = command.error; return; }
     const chosen = retry?.skill ?? command.skill;
     const request = command.input || (chosen === "summary" ? "总结当前页面，提炼关键观点。" : chosen === "reply" ? "根据当前原帖生成一条自然的回复。" : "根据已有草稿和选中素材写一条 Post；没有素材时先问我想表达什么。");
+    let postTemplate: PostTemplateSelection | undefined;
+    try { postTemplate = freezePostTemplateSelection(current.value.postTemplateId ? {
+      id: current.value.postTemplateId, revision: current.value.postTemplateRevision ?? '',
+    } : undefined, catalog.value?.postTemplates, chosen, retry); }
+    catch (e) {
+      error.value = messageOf(e);
+      const failed = retry && current.value.messages.find(message => message.id === retry.id);
+      if (failed) { failed.error = error.value; void persist().catch(() => {}); }
+      return;
+    }
     error.value = ""; notice.value = ""; deleted.value = null; busy.value = true; runningSkill.value = chosen;
-    let conversation = current.value, user: ChatMessage | undefined, generated = false;
+    let conversation = current.value, user = retry ? conversation.messages.find(message => message.id === retry.id) : undefined, generated = false;
     try {
       await flush();
       const fresh = (await readPage(true))!;
-      await loadCatalog();
-      if (catalog.value && chosen && !catalog.value.skills.some(s => s.key === chosen)) throw new Error(`/${chosen} 已停用或文件不可用，请检查互动 Skills 设置。`);
+      const loadedCatalog = await loadCatalog();
+      if (loadedCatalog && chosen && !loadedCatalog.skills.some(s => s.key === chosen)) throw new Error(`/${chosen} 已停用或文件不可用，请检查互动 Skills 设置。`);
       if (conversation.id !== current.value.id || !sameAccount(conversation.account, fresh.context.account))
         throw new Error('X 账号已切换，草稿保留在原账号会话中。请在当前账号重新输入。');
+      if (chosen === 'post') validatePostTemplateSelection(postTemplate, loadedCatalog?.postTemplates);
       if (chosen === "reply" && !fresh.context.target) throw new Error("请先在 X 打开想回复的帖子或它的回复框，再试一次。");
       const before = retry ? conversation.messages.slice(0, conversation.messages.findIndex(m => m.id === retry.id)) : [...conversation.messages];
       const previousSkill = [...before].reverse().find(m => m.role === "assistant")?.skill;
       user = retry ? conversation.messages.find(m => m.id === retry.id) : undefined;
       if (!user) {
-        user = { id: crypto.randomUUID(), role: "user", content: request, createdAt: Date.now(), ...(chosen ? { skill: chosen, skillSource: 'command' as const } : {}) };
+        user = { id: crypto.randomUUID(), role: "user", content: request, createdAt: Date.now(), ...(chosen ? { skill: chosen, skillSource: 'command' as const } : {}), ...(postTemplate ? { postTemplate } : {}) };
         conversation.messages.push(user);
         user = conversation.messages[conversation.messages.length - 1];
       }
@@ -228,11 +281,15 @@ export function useAssistant() {
       await persist(conversation); await store.activate(conversation.id, conversation.account); await scrollDown(); resizeInput();
       const result = await client.request<AssistantChatResult>("/api/assistant/chat", { method: "POST", body: {
         skill: chosen, previousSkill, input: request, history: requestHistory(before), context: fresh.context, targetLanguage: config.value.basic.targetLang,
+        ...(postTemplate ? { postTemplate } : {}),
       } });
       user.skill = result.skill; user.skillSource ??= 'inferred';
       user.reference = conversationReference(fresh.context, result.skill);
       conversation.messages.push({ id: crypto.randomUUID(), role: "assistant", content: result.content, skill: result.skill,
-        context: draftContext(fresh.context), ...(result.draft ? { validation: result.draft } : {}), createdAt: Date.now() });
+        context: draftContext(fresh.context), ...(result.draft ? { validation: result.draft } : {}),
+        ...(result.skill === 'post' && result.postTemplate ? { appliedPostTemplate: {
+          id: result.postTemplate.id, revision: result.postTemplate.revision, name: result.postTemplate.name, updatedAt: result.postTemplate.updatedAt,
+        } } : {}), createdAt: Date.now() });
       generated = true;
       conversation.pending = null;
       await persist(conversation);
@@ -309,13 +366,14 @@ export function useAssistant() {
     await scrollDown(); await focusInput();
   });
   onBeforeUnmount(() => {
-    disposed = true; readVersion++; persistBeforeClose();
+    disposed = true; readVersion++; catalogVersion++; persistBeforeClose();
     chrome.tabs.onActivated.removeListener(activated); chrome.tabs.onUpdated.removeListener(updated);
     window.removeEventListener("pagehide", persistBeforeClose);
     window.removeEventListener("focus", focused);
     window.removeEventListener("message", shown);
   });
   return { current, input, messages, skills, accountName, busy, ready, filling, error, notice, historyOpen, search, explicitSkill, lastSkill, runningSkill, skillName,
+    postTemplates, showPostTemplates, selectedPostTemplateId, postTemplateChoice, postTemplateSelectionNotice,
     history, deleted, inputElement, chatArea, caret, showCommands, matchingSkills, selectedCommand,
     startNew, openConversation, toggleHistory, removeConversation, undoDelete, chooseCommand, useShortcut,
     send, copy, fill, onKeydown, saveDraft };

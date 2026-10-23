@@ -1,5 +1,11 @@
 export const SKILL_KEYS = ["summary", "post", "reply"] as const;
 export type SkillKey = typeof SKILL_KEYS[number];
+export const POST_TEMPLATE_NAME_MAX = 80;
+export const POST_TEMPLATE_CONTENT_MAX = 12000;
+export interface PostTemplateSelection { id: string; revision: string }
+export interface PostTemplateSummary extends PostTemplateSelection { name: string; updatedAt: string }
+export interface PostTemplate extends PostTemplateSummary { content: string }
+export interface PostTemplateInput { name: string; content: string }
 export interface AssistantSkill {
   id: string;
   key: SkillKey;
@@ -44,12 +50,13 @@ export interface AssistantTurn {
 export interface AssistantChatRequest {
   skill?: SkillKey;
   previousSkill?: SkillKey;
+  postTemplate?: PostTemplateSelection;
   input: string;
   history: AssistantTurn[];
   context: AssistantContext;
   targetLanguage: string;
 }
-export interface AssistantChatResult { skill?: SkillKey; content: string; accountId: string | null; draft?: DraftValidation }
+export interface AssistantChatResult { skill?: SkillKey; content: string; accountId: string | null; draft?: DraftValidation; postTemplate?: PostTemplateSummary }
 
 export function assistantPageReference(context: AssistantContext, skill?: SkillKey) {
   return {
@@ -60,6 +67,7 @@ export function assistantPageReference(context: AssistantContext, skill?: SkillK
 }
 export interface AssistantCatalog {
   skills: AssistantSkill[];
+  postTemplates: PostTemplateSummary[];
   account: { id: string; name: string; username: string } | null;
   preferences: WritingPreferences;
 }

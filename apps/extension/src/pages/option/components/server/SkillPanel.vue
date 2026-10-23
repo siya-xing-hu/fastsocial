@@ -30,11 +30,13 @@
         </div>
       </div>
     </article>
+    <PostTemplatePanel v-if="selectedKey === 'post'" />
   </section>
 </template>
 <script setup lang="ts">
 import ActionButton from '../../../../components/ui/ActionButton.vue';
 import ToggleSwitch from '../../../../components/ui/ToggleSwitch.vue';
+import PostTemplatePanel from './PostTemplatePanel.vue';
 import { computed, onMounted, ref } from 'vue';
 import type { AssistantSkill, SkillKey } from '@fast-social/contracts';
 import { requestLocalService } from '../../../../common/local-service';

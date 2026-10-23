@@ -40,7 +40,7 @@ export type ServiceDraft = {
   id: string;
   name: string;
   endpoint: string;
-  apiFormat: "openai" | "anthropic";
+  apiFormat: NonNullable<AIServiceConfig["apiFormat"]>;
   apiKey: string;
   apiKeyConfigured: boolean;
   modelsText: string;
@@ -63,11 +63,29 @@ export type MonitorDraft = {
 };
 export type PromptDraft = InteractionPrompt;
 
+export const AI_API_FORMAT_DETAILS = {
+  openai: {
+    label: "OpenAI Chat Completions",
+    apiName: "Chat Completions",
+    endpoint: "https://api.openai.com/v1/chat/completions",
+  },
+  responses: {
+    label: "OpenAI Responses",
+    apiName: "Responses",
+    endpoint: "https://api.openai.com/v1/responses",
+  },
+  anthropic: {
+    label: "Anthropic Messages",
+    apiName: "Messages",
+    endpoint: "https://api.anthropic.com/v1/messages",
+  },
+} satisfies Record<ServiceDraft["apiFormat"], { label: string; apiName: string; endpoint: string }>;
+
 export function emptyServiceDraft(): ServiceDraft {
   return {
     id: "",
     name: "",
-    endpoint: "https://api.openai.com/v1/chat/completions",
+    endpoint: AI_API_FORMAT_DETAILS.openai.endpoint,
     apiFormat: "openai",
     apiKey: "",
     apiKeyConfigured: false,
@@ -673,7 +691,7 @@ export function useServerAdmin() {
       { label: "AI 服务", value: service.name },
       {
         label: "接口格式",
-        value: service.apiFormat === "anthropic" ? "Anthropic Messages" : "OpenAI Chat Completions",
+        value: AI_API_FORMAT_DETAILS[service.apiFormat ?? "openai"].label,
       },
       { label: "模型", value: modelName, mono: true },
       { label: "Endpoint", value: service.endpoint, mono: true },

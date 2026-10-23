@@ -3,7 +3,7 @@
 这是供个人使用的本地服务。它默认监听 `127.0.0.1:5127`，将配置写入被 Git 忽略的根目录 `.data/fastsocial.db`，负责：
 
 - 直接请求 X Web 内部接口读取指定用户的新帖子；
-- 使用 OpenAI Chat Completions 或 Anthropic Messages 兼容模型按每条规则的 Prompt 判断是否命中；
+- 使用 OpenAI Chat Completions、OpenAI Responses 或 Anthropic Messages 兼容模型按每条规则的 Prompt 判断是否命中；
 - 命中后按编排顺序关注作者、生成或发送固定回复、通过 Telegram 通知；
 - 为浏览器扩展提供 AI、互动 Skills、账号 Profile 和自动翻译开关。
 
@@ -71,7 +71,7 @@ FAST_SOCIAL_HTTPS_PROXY=http://host.docker.internal:7897
 ## 配置顺序
 
 1. 构建并加载扩展，打开设置页。
-2. 在“AI 服务”配置服务地址、API Key、模型及默认模型。
+2. 在“AI 服务”选择接口格式，配置完整服务地址、API Key、模型及默认模型。OpenAI Responses 使用 `/v1/responses`，Chat Completions 使用 `/v1/chat/completions`，Anthropic Messages 使用 `/v1/messages`；自定义网关按所填 URL 直接请求。
 3. 在“账号设置”添加账号名称、用户名、Cookie、主语言和 Profile；自动翻译直接在账号列表中切换。发帖权限自动识别，无需配置。在“互动 Skills”编辑总结、发帖、回复各自完整的 SKILL.md 文档。
 4. 在“插件设置”选择翻译渠道、目标语言、AI 翻译指令和 DeepL 参数；这些值保存在当前浏览器。
 5. 在“账号设置”点击账号行的“测试”，读取该账号首页 Post，结果展示作者、正文和原帖链接；不需要填写测试用户名。在“连接配置”设置 Telegram。

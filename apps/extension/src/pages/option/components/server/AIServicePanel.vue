@@ -37,7 +37,7 @@
                     {{ service.enabled ? '已启用' : '已停用' }}
                   </span>
                   <span class="status-badge bg-violet-50 text-violet-700">
-                    {{ service.apiFormat === 'anthropic' ? 'Anthropic' : 'OpenAI' }}
+                    {{ AI_API_FORMAT_DETAILS[service.apiFormat ?? 'openai'].label }}
                   </span>
                   <span class="status-badge" :class="service.apiKeyConfigured ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-700'">
                     {{ service.apiKeyConfigured ? 'Key 已配置' : '缺少 Key' }}
@@ -87,8 +87,7 @@
         <label class="block">
           <span class="field-label">接口格式</span>
           <select v-model="draft.apiFormat" class="field-input" @change="handleFormatChange">
-            <option value="openai">OpenAI Chat Completions</option>
-            <option value="anthropic">Anthropic Messages</option>
+            <option v-for="(format, value) in AI_API_FORMAT_DETAILS" :key="value" :value="value">{{ format.label }}</option>
           </select>
         </label>
         <label class="block">
@@ -96,9 +95,9 @@
           <input
             v-model="draft.endpoint"
             class="field-input"
-            :placeholder="draft.apiFormat === 'anthropic' ? 'https://api.anthropic.com/v1/messages' : 'https://api.openai.com/v1/chat/completions'"
+            :placeholder="AI_API_FORMAT_DETAILS[draft.apiFormat].endpoint"
           />
-          <span class="field-help">填写完整的 {{ draft.apiFormat === 'anthropic' ? 'Messages' : 'Chat Completions' }} URL。</span>
+          <span class="field-help">填写完整的 {{ AI_API_FORMAT_DETAILS[draft.apiFormat].apiName }} URL。</span>
           <span v-if="usesLoopbackAddress(draft.endpoint)" class="mt-2 block rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
             Fast Social 使用 Docker 时，localhost 会指向容器自身，请改为 host.docker.internal。
           </span>
@@ -126,6 +125,7 @@ import { Bot, Info } from "lucide-vue-next";
 import OptionDialog from "../OptionDialog.vue";
 import ToggleSwitch from "../../../../components/ui/ToggleSwitch.vue";
 import {
+  AI_API_FORMAT_DETAILS,
   emptyServiceDraft,
   serviceToDraft,
   useServerAdminContext,
@@ -144,8 +144,6 @@ const {
 
 const dialogOpen = ref(false);
 const draft = ref(emptyServiceDraft());
-const OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions";
-const ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1/messages";
 
 function openDialog(service?: AIServiceConfig) {
   draft.value = service ? serviceToDraft(service) : emptyServiceDraft();
@@ -157,10 +155,8 @@ function closeDialog() {
 }
 
 function handleFormatChange() {
-  if (!draft.value.endpoint || [OPENAI_ENDPOINT, ANTHROPIC_ENDPOINT].includes(draft.value.endpoint)) {
-    draft.value.endpoint = draft.value.apiFormat === "anthropic"
-      ? ANTHROPIC_ENDPOINT
-      : OPENAI_ENDPOINT;
+  if (!draft.value.endpoint || Object.values(AI_API_FORMAT_DETAILS).some((format) => format.endpoint === draft.value.endpoint)) {
+    draft.value.endpoint = AI_API_FORMAT_DETAILS[draft.value.apiFormat].endpoint;
   }
 }
 

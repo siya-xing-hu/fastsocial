@@ -10,7 +10,7 @@
     "dev": "vite",
     "build-dev": "vue-tsc && vite build --mode development",
     "build": "vue-tsc && vite build",
-    "test": "node --experimental-strip-types --test src/background/local-service-client.test.ts src/pages/option/option-navigation.test.ts src/pages/option/interaction-prompt-order.test.ts src/pages/option/workflow-run-message.test.ts src/common/config-transfer.test.ts src/common/config-persistence.test.ts src/common/account-policy.test.ts src/common/confirmation-gate.test.ts src/assistant/context-guard.test.ts src/assistant/conversations.test.ts src/assistant/skill-commands.test.ts src/assistant/open-panel.test.ts src/assistant/x-context.test.ts src/components/social/x-translation.test.ts"
+    "test": "node --experimental-strip-types --test src/background/local-service-client.test.ts src/pages/option/option-navigation.test.ts src/pages/option/interaction-prompt-order.test.ts src/pages/option/workflow-run-message.test.ts src/common/config-transfer.test.ts src/common/config-persistence.test.ts src/common/account-policy.test.ts src/common/confirmation-gate.test.ts src/assistant/context-guard.test.ts src/assistant/conversations.test.ts src/assistant/post-template-selection.test.ts src/assistant/skill-commands.test.ts src/assistant/open-panel.test.ts src/assistant/x-context.test.ts src/components/social/x-translation.test.ts"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "2.0.0-beta.26",

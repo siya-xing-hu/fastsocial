@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ConversationStore, CONVERSATION_PREFIX, conversationTitle, conversationReference, draftContext, newConversation, requestHistory, sameAccount, type ChatMessage } from "./conversations.ts";
+import { ConversationStore, CONVERSATION_PREFIX, conversationHasContent, conversationTitle, conversationReference, draftContext, newConversation, requestHistory, sameAccount, type ChatMessage } from "./conversations.ts";
 
 function storage() {
   const values: Record<string, unknown> = {};
@@ -160,4 +160,49 @@ test('large sources are bounded and explicitly marked; transcript and full draft
   const history = requestHistory(messages);
   assert.equal(history[1].content.length, 50000); assert.equal(history[0].reference, undefined);
   assert.equal(messages[0].reference, reference);
+});
+
+test('template-only drafts survive reopening under their original account and new conversations have no template', async () => {
+  const area = storage(), store = new ConversationStore(area, 10);
+  const firstAccount = { actorId: 'first-account', username: 'first' }, secondAccount = { actorId: 'second-account', username: 'second' };
+  const first = newConversation(firstAccount), second = newConversation(secondAccount);
+  assert.equal(first.postTemplateId, undefined);
+  assert.equal(conversationHasContent(first), false);
+  first.postTemplateId = 'first-template'; first.postTemplateRevision = 'first-revision';
+  second.postTemplateId = 'second-template'; second.postTemplateRevision = 'second-revision';
+  assert.equal(conversationHasContent(first), true, 'template references prevent empty-draft pruning');
+  await store.save(first); await store.save(second);
+  await store.activate(first.id, firstAccount); await store.activate(second.id, secondAccount);
+  const reopened = new ConversationStore(area, 10);
+  assert.equal((await reopened.list(firstAccount))[0].postTemplateId, 'first-template');
+  assert.equal((await reopened.list(firstAccount))[0].postTemplateRevision, 'first-revision');
+  assert.equal((await reopened.list(secondAccount))[0].postTemplateId, 'second-template');
+  assert.equal((await reopened.list(secondAccount))[0].postTemplateRevision, 'second-revision');
+  assert.equal(await reopened.activeId(firstAccount), first.id);
+  assert.equal(await reopened.activeId(secondAccount), second.id);
+  assert.equal(newConversation(firstAccount).postTemplateId, undefined, 'selection is not an account-wide default');
+  assert.equal(newConversation(firstAccount).postTemplateRevision, undefined);
+  delete first.postTemplateId;
+  delete first.postTemplateRevision;
+  assert.equal(conversationHasContent(first), false);
+});
+
+test('frozen retry selections and actual applied template summaries survive storage without entering model history', async () => {
+  const area = storage(), store = new ConversationStore(area), conversation = newConversation({ actorId: '1', username: 'first' });
+  conversation.postTemplateId = 'new-choice';
+  conversation.postTemplateRevision = 'new-choice-version';
+  conversation.messages = [
+    { id: 'u', role: 'user', skill: 'post', content: 'Write this', createdAt: 1, postTemplate: { id: 'original', revision: 'v1' } },
+    { id: 'a', role: 'assistant', skill: 'post', content: 'Generated post', createdAt: 2, appliedPostTemplate: { id: 'original', revision: 'v1', name: 'Actual template', updatedAt: '2026-10-23T00:00:00Z' } },
+  ];
+  await store.save(conversation);
+  const restored = (await new ConversationStore(area).list(conversation.account))[0];
+  assert.deepEqual(restored.messages[0].postTemplate, { id: 'original', revision: 'v1' });
+  assert.equal(restored.messages[1].appliedPostTemplate?.name, 'Actual template');
+  assert.equal(restored.postTemplateId, 'new-choice');
+  assert.equal(restored.postTemplateRevision, 'new-choice-version');
+  assert.deepEqual(requestHistory(restored.messages), [
+    { role: 'user', content: 'Write this', skill: 'post' },
+    { role: 'assistant', content: 'Generated post', skill: 'post' },
+  ]);
 });

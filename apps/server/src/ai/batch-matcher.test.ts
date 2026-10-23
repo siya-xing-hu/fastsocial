@@ -51,6 +51,41 @@ test('portrait format variations normalize into text without rejecting metadata 
   assert.deepEqual(parseBatchResult(JSON.stringify({memory: {topics: {...fact, kind: 'manual'}}}), {...portrait, memory: {topics: manual}}).memory?.topics, manual);
 });
 
+test('portrait sections retain named nested facts without treating metadata as prose', () => {
+  const result = parseBatchResult(JSON.stringify({ memory: {
+    background: {
+      identity: { text: '开发者', evidenceIds: ['1', 'fake'], kind: 'explicit' },
+      career: { text: '分享产品实践', evidenceIds: ['2', '1'] },
+      note: '忽略附加说明',
+      notes: { text: '忽略对象形式的附加说明' },
+      metadata: { text: '忽略元信息中的文字' },
+    },
+    topics: { interests: [{ text: '开发工具', evidenceIds: ['2'], kind: 'explicit' }, '公开经验'] },
+    language: { style: { habits: { text: '简洁表达', evidenceIds: ['1'], kind: 'explicit' } } },
+    recent: { evidenceIds: [{ text: '引用不是正文' }], kind: { text: '元信息不是正文' }, updatedAt: { text: '时间不是正文' } },
+    extra: { text: '忽略未知分区' },
+  } }), portrait);
+  assert.equal(result.memory?.background?.text, '开发者\n分享产品实践');
+  assert.deepEqual(result.memory?.background?.evidenceIds, ['1', '2']);
+  assert.equal(result.memory?.background?.kind, 'inferred');
+  assert.equal(result.memory?.topics?.text, '开发工具\n公开经验');
+  assert.deepEqual(result.memory?.topics?.evidenceIds, ['2']);
+  assert.equal(result.memory?.language?.text, '简洁表达');
+  assert.equal(result.memory?.language?.kind, 'explicit');
+  assert.equal(result.memory?.recent, undefined);
+});
+
+test('empty or metadata-only portrait sections fail instead of replacing a saved portrait', () => {
+  for (const memory of [
+    {},
+    { background: { identity: { text: '   ' } } },
+    { topics: { evidenceIds: ['1'], kind: 'explicit', note: '附加说明' } },
+    { topics: { note: { text: '附加说明' }, notes: [{ text: '更多说明' }], metadata: { text: '元信息' } } },
+    { recent: { evidenceIds: [{ text: '引用不是正文' }] } },
+    { language: { style: { text: false, evidenceIds: ['1'] } } },
+  ]) assert.throws(() => parseBatchResult(JSON.stringify({ memory }), portrait), /AI 未返回可读取的画像正文/);
+});
+
 test('portrait rebuild makes one request and rejects invalid output without repeating generation', async () => {
   const calls: AIChatMessage[][] = [];
   const matcher = new BatchMatcher({ async complete(_provider: unknown, messages: AIChatMessage[]) {
@@ -104,4 +139,19 @@ test('only valid matching output expands omissions; empty matches means all chec
   const messages = batchMessages(input);
   assert.match(messages[0]!.content, /不生成或更新画像/);
   assert.doesNotMatch(batchMessages(portrait)[0]!.content, /必须检查所有 rules/);
+});
+
+test('shared response wrappers succeed in one batch request and preserve strict match validation', async () => {
+  const json = JSON.stringify(response);
+  for (const raw of [`结果如下：\n\`\`\`json\n${json}\n\`\`\``, `<think>分析</think>\n${json}`]) {
+    let calls = 0;
+    const matcher = new BatchMatcher({ async complete() { calls++; return raw; } } as unknown as AIGateway);
+    const result = await matcher.analyze(input);
+    assert.equal(calls, 1);
+    assert.equal(result.decisions.find(d => d.postId === '2')?.status, 'match');
+  }
+  assert.equal(parseBatchResult('画像：\n```json\n{"memory":{"background":"开发者"}}\n```', portrait).memory?.background?.text, '开发者');
+  for (const body of [{}, { matches: [{ ...response.matches[0], postId: 2 }] }, { matches: [{ ...response.matches[0], postId: 'unknown' }] }])
+    assert.throws(() => parseBatchResult(`结果：\n\`\`\`json\n${JSON.stringify(body)}\n\`\`\``, input));
+  assert.throws(() => parseBatchResult(`\`\`\`json\n${json}\n\`\`\`\n\`\`\`json\n{"matches":[]}\n\`\`\``, input));
 });

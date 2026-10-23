@@ -78,3 +78,13 @@ test('sparse or empty matches still account for every scanned post without AI no
   assert.deepEqual(parseWorkflowDecisions('{"matches":[]}', input), input.map(p => ({ postId: p.id, matched: false, message: '' })));
   assert.match(f.calls[0]![0]!.content, /只输出确定命中/);
 });
+
+test('home matching accepts shared explicit wrappers while rejecting malformed schemas and ambiguity', () => {
+  const input = posts(1), json = result([{ postId: input[0]!.id }]);
+  for (const raw of [`结果：\n\`\`\`json\n${json}\n\`\`\``, `<think>分析</think>\n${json}`])
+    assert.equal(parseWorkflowDecisions(raw, input)[0]?.matched, true);
+  for (const body of [{}, { matches: [{ postId: 'unknown', message: '命中' }] },
+    { matches: [{ postId: Number(input[0]!.id), message: '命中' }] }, { matches: [], decisions: [] }])
+    assert.throws(() => parseWorkflowDecisions(`结果：\n\`\`\`json\n${JSON.stringify(body)}\n\`\`\``, input), /AI 批量判断/);
+  assert.throws(() => parseWorkflowDecisions(`${json}\n\`\`\`json\n{"matches":[]}\n\`\`\``, input), /AI 批量判断/);
+});

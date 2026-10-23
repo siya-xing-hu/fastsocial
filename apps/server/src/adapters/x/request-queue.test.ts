@@ -110,7 +110,7 @@ test('manual account tests bypass the queue while workflow reads and writes reta
   const app = createApp({ traceSink: entry => logs.push(structuredClone(entry)), xRequestQueue: queue, fetchImpl: async (url, init) => {
     if (String(url).startsWith('https://fixture.invalid/')) {
       calls.push({ name: 'AI', at: now });
-      return Response.json({ choices: [{ message: { content: JSON.stringify({ matches: [{ postId: '100', message: 'match' }] }) } }] });
+      return Response.json({ choices: [{ message: { content: JSON.stringify({ matches: [{ postId: '100', message: 'match' }] }) }, finish_reason: 'stop' }] });
     }
     assert.ok(String(url).startsWith('https://x.com/'));
     const name = new URL(String(url)).pathname.split('/').at(-1)!;

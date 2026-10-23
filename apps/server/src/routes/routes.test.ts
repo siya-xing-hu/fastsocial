@@ -144,26 +144,36 @@ test("AI options only expose enabled models with a configured key", async () => 
 
 test("settings API validates and preserves the AI interface format", async () => {
   const app = createApp({ xRequestQueue: new XRequestQueue({ intervalMs: 0 }) });
-  const saved = await app.inject({
-    method: "PUT",
-    url: "/api/settings",
-    payload: {
-      ai: {
-        defaultProvider: "anthropic:model",
-        services: [{
-          id: "anthropic",
-          name: "Anthropic gateway",
-          endpoint: "http://host.docker.internal:3000/v1/messages",
-          apiFormat: "anthropic",
-          apiKey: "secret",
-          enabled: true,
-          models: [{ name: "model" }],
-        }],
+  for (const apiFormat of ["openai", "responses", "anthropic"]) {
+    const endpoint = `http://host.docker.internal:3000/custom/${apiFormat}`;
+    const saved = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      payload: {
+        ai: {
+          defaultProvider: "gateway:model",
+          services: [{
+            id: "gateway",
+            name: "AI gateway",
+            endpoint,
+            apiFormat,
+            apiKey: "secret",
+            enabled: true,
+            models: [{ name: "model" }],
+          }],
+        },
       },
-    },
-  });
-  assert.equal(saved.statusCode, 200);
-  assert.equal(saved.json().data.ai.services[0].apiFormat, "anthropic");
+    });
+    assert.equal(saved.statusCode, 200);
+    assert.equal(saved.json().data.ai.services[0].apiFormat, apiFormat);
+
+    const listed = await app.inject({ method: "GET", url: "/api/settings" });
+    const service = listed.json().data.ai.services[0];
+    assert.equal(service.apiFormat, apiFormat);
+    assert.equal(service.endpoint, endpoint);
+    assert.equal(service.apiKeyConfigured, true);
+    assert.equal(service.apiKey, undefined);
+  }
 
   const invalid = await app.inject({
     method: "PUT",
@@ -225,4 +235,40 @@ test("prompts API preserves configured priority and omits disabled prompts", asy
     ["second", "first"],
   );
   await app.close();
+});
+
+test('AI test and chat routes reject blank model output and preserve nonblank text verbatim', async () => {
+  let content = ' \n\t ', requests = 0;
+  const app = createApp({ xRequestQueue: new XRequestQueue({ intervalMs: 0 }), fetchImpl: async url => {
+    assert.equal(String(url), 'https://ai.example/chat/completions');
+    requests++;
+    return Response.json({ choices: [{ message: { content }, finish_reason: 'stop' }] });
+  } });
+  try {
+    const saved = await app.inject({ method: 'PUT', url: '/api/settings', payload: { ai: {
+      defaultProvider: 'test:model', services: [{ id: 'test', name: 'Test AI', endpoint: 'https://ai.example/chat/completions',
+        apiKey: 'test-key', enabled: true, models: [{ name: 'model' }] }],
+    } } });
+    assert.equal(saved.statusCode, 200);
+    for (const url of ['/api/test/ai', '/api/ai/chat']) {
+      const response = await app.inject({ method: 'POST', url, payload: { messages: [{ role: 'user', content: '测试' }] } });
+      assert.equal(response.statusCode, 500);
+      assert.equal(response.json().ok, false);
+      assert.match(response.json().error.message, /空内容/);
+    }
+    const stream = await app.inject({ method: 'POST', url: '/api/ai/chat', payload: {
+      stream: true, messages: [{ role: 'user', content: '测试' }],
+    } });
+    const frames = stream.body.trim().split('\n').map(line => JSON.parse(line));
+    assert.match(frames.at(-1).error, /空内容/);
+    assert.ok(frames.every(frame => !frame.done));
+    assert.equal(requests, 3);
+
+    content = '  ```json\n{"example":true}\n```  ';
+    const chat = await app.inject({ method: 'POST', url: '/api/ai/chat', payload: { messages: [{ role: 'user', content: '保留格式' }] } });
+    assert.equal(chat.statusCode, 200); assert.equal(chat.json().data, content);
+    const testResult = await app.inject({ method: 'POST', url: '/api/test/ai', payload: {} });
+    assert.equal(testResult.statusCode, 200); assert.equal(testResult.json().data.content, content);
+    assert.equal(requests, 5);
+  } finally { await app.close(); }
 });

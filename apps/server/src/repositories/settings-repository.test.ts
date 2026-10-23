@@ -70,7 +70,8 @@ test("settings repository preserves secrets when omitted", () => {
         {
           id: "openai",
           name: "Renamed",
-          endpoint: "https://example.com/v1/chat/completions",
+          endpoint: "https://example.com/custom/responses",
+          apiFormat: "responses",
           models: [{ name: "gpt-test" }],
           enabled: true,
         },
@@ -80,6 +81,11 @@ test("settings repository preserves secrets when omitted", () => {
   });
 
   assert.equal(repository.getAI().services[0].apiKey, "secret");
+  const restartedRepository = new SettingsRepository(database);
+  assert.equal(restartedRepository.getAI().services[0].apiFormat, "responses");
+  assert.equal(restartedRepository.getPublic().ai.services[0].apiFormat, "responses");
+  assert.equal(restartedRepository.getPublic().ai.services[0].apiKeyConfigured, true);
+  assert.equal(restartedRepository.getPublic().ai.services[0].apiKey, undefined);
   assert.equal(repository.getX().cookies[0]?.cookie, "auth_token=test; ct0=csrf");
   assert.equal(repository.getTelegram().botToken, "bot-secret");
   assert.equal(repository.getTelegram().chatId, "43");

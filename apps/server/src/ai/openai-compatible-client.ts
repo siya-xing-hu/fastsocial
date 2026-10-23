@@ -45,7 +45,7 @@ export class OpenAICompatibleClient {
         }
         throw new AIOutputTruncatedError();
       }
-      if (!result.content) throw new Error("AI 服务返回了空内容");
+      if (!result.content.trim()) throw new Error("AI 服务返回了空内容");
       trace('ai.complete', 'AI 返回完整内容', { serviceId: input.service.id, model: input.model.name, content: result.content, usage: result.usage });
       return result.content;
     }
@@ -58,7 +58,7 @@ export class OpenAICompatibleClient {
   ): Promise<void> {
     const result = await this.receive(input, onChunk);
     if (result.truncated) throw new AIOutputTruncatedError();
-    if (!result.content) throw new Error("AI 服务返回了空内容");
+    if (!result.content.trim()) throw new Error("AI 服务返回了空内容");
   }
 
   private async receive(input: CompletionInput, onChunk?: (chunk: string) => void | Promise<void>) {
@@ -86,6 +86,8 @@ export class OpenAICompatibleClient {
     };
     const body = apiFormat === "anthropic"
       ? anthropicRequestBody(input, stream)
+      : apiFormat === "responses"
+      ? responsesRequestBody(input, stream)
       : openAIRequestBody(input, stream);
     if (apiFormat === "anthropic") {
       headers["anthropic-version"] = "2023-06-01";
@@ -135,6 +137,17 @@ function anthropicRequestBody(input: CompletionInput, stream: boolean): Record<s
     temperature: 0.2,
     stream,
     ...(system ? { system } : {}),
+  };
+}
+
+function responsesRequestBody(input: CompletionInput, stream: boolean): Record<string, unknown> {
+  return {
+    model: input.model.name,
+    input: input.messages,
+    ...(input.maxOutputTokens ? { max_output_tokens: input.maxOutputTokens } : {}),
+    stream,
+    // Conversation history is owned by this app; no upstream response IDs are needed.
+    store: false,
   };
 }
 

@@ -4,6 +4,7 @@ import { record } from "../configuration/routes.ts";
 import { ValidationError } from "../http/validation.ts";
 import type { AssistantRepository } from "./repository.ts";
 import type { AssistantService } from "./service.ts";
+import { postTemplateInput, postTemplateSelection } from './post-templates.ts';
 
 function text(v: unknown, max: number, required = false): string {
   if (typeof v !== "string" || v.length > max || (required && !v.trim())) throw new ValidationError("助手请求包含无效或过长的文本");
@@ -53,7 +54,9 @@ export function chatInput(v: unknown): AssistantChatRequest {
       ...(m.reference === undefined ? {} : { reference: text(m.reference, 16000, true) }) } as const;
   });
   if (history.reduce((n, m) => n + m.content.length + (m.reference?.length ?? 0), 0) > 60000) throw new ValidationError("对话过长，请开始新对话");
-  return { skill: r.skill === undefined ? undefined : skillKey(r.skill), ...(r.previousSkill === undefined ? {} : { previousSkill: skillKey(r.previousSkill) }), input: text(r.input, 8000, true), targetLanguage: text(r.targetLanguage, 80), history, context };
+  return { skill: r.skill === undefined ? undefined : skillKey(r.skill), ...(r.previousSkill === undefined ? {} : { previousSkill: skillKey(r.previousSkill) }),
+    ...(r.postTemplate === undefined ? {} : { postTemplate: postTemplateSelection(r.postTemplate) }),
+    input: text(r.input, 8000, true), targetLanguage: text(r.targetLanguage, 80), history, context };
 }
 export function registerAssistantRoutes(app: FastifyInstance, repo: AssistantRepository, service: AssistantService): void {
   app.get<{ Querystring: { actorId?: string; username?: string } }>("/api/assistant/catalog", async req => ({ ok: true, data: service.catalog(req.query.actorId ?? "", req.query.username ?? "") }));
@@ -66,6 +69,17 @@ export function registerAssistantRoutes(app: FastifyInstance, repo: AssistantRep
     const r = record(req.body);
     if (typeof r.enabled !== 'boolean') throw new ValidationError('Skill 启用状态无效');
     return { ok: true, data: repo.setEnabled(skillKey(req.params.key), r.enabled) };
+  });
+  app.get('/api/assistant/post-templates', async () => ({ ok: true, data: repo.templates.list() }));
+  app.post('/api/assistant/post-templates', async req => ({ ok: true, data: repo.templates.create(postTemplateInput(req.body)) }));
+  app.put<{ Params: { id: string } }>('/api/assistant/post-templates/:id', async req => {
+    const input = record(req.body);
+    return { ok: true, data: repo.templates.update(postTemplateSelection({ id: req.params.id, revision: input.revision }), postTemplateInput(input)) };
+  });
+  app.delete<{ Params: { id: string } }>('/api/assistant/post-templates/:id', async req => {
+    const input = record(req.body);
+    repo.templates.delete(postTemplateSelection({ id: req.params.id, revision: input.revision }));
+    return { ok: true, data: { deleted: true } };
   });
   app.post('/api/assistant/posting-policy', async req => ({ ok: true, data: await service.postingPolicy(identity(req.body)) }));
   app.post("/api/assistant/chat", async req => ({ ok: true, data: await service.chat(chatInput(req.body)) }));

@@ -417,6 +417,83 @@ test('failed portrait rebuilds preserve the saved portrait, evidence and workflo
     await h.service.rebuildProfile(h.w.id); assert.equal(h.accounts.profile('target-id')?.memory.recent?.text, '最近讨论 3');
   } finally { await h.service.stop(); h.db.close(); }
 });
+test('portrait refresh saves grouped AI facts and full evidence without consuming pending workflow posts', async () => {
+  let portrait: unknown = { background: { text: '旧画像', evidenceIds: ['1'], kind: 'explicit' } }, requests = 0;
+  const h = harness(new BatchMatcher({ async complete(_provider: unknown, messages: { content: string }[]) {
+    if (JSON.parse(messages[1]!.content).rules.length) return '{"matches":[]}';
+    requests++; return JSON.stringify({ memory: portrait });
+  } } as unknown as AIGateway));
+  try {
+    await h.service.run(h.w.id);
+    const initial = await h.service.rebuildProfile(h.w.id);
+    const workflow = h.repo.get(h.w.id), status = h.accounts.status(h.w.id), decisions = h.accounts.decisions(h.w.id), records = h.repo.records(h.w.id);
+    h.state.posts.push(post('3')); h.state.bio = 'Now building open source tools';
+    portrait = {
+      background: {
+        builder: { text: '开发开源工具', evidenceIds: ['1'], kind: 'explicit' },
+        identity: { text: '自述为独立开发者', evidenceIds: ['unknown'], kind: 'explicit' },
+        career: { text: '近期开始分享产品实践', evidenceIds: ['3'], kind: 'inferred' },
+        metadata: { evidenceIds: ['2'], kind: 'explicit', confidence: 0.9 },
+      },
+      topics: {
+        interests: { text: '关注 AI 辅助编程', evidenceIds: ['2'], kind: 'explicit' },
+        focus: { text: '讨论实际开发中的效率', evidenceIds: ['3'], kind: 'explicit' },
+      },
+      language: { style: { text: '使用简洁中文说明经验', evidenceIds: ['2'], kind: 'inferred' } },
+      recent: {
+        updates: { text: '发布工具更新', evidenceIds: ['3'], kind: 'explicit' },
+        activity: { text: '交流开发过程', evidenceIds: ['3'], kind: 'explicit' },
+      },
+    };
+    const pages = h.pages.length, reads = h.state.profileReads;
+    const view = await h.service.rebuildProfile(h.w.id);
+    assert.equal(requests, 2);
+    assert.deepEqual(h.pages.slice(pages), [{ cursor: undefined, surface: 'posts' }]); assert.equal(h.state.profileReads, reads + 1);
+    assert.equal(view.profile?.version, initial.profile!.version + 1);
+    assert.equal(view.profile?.memory.background?.text, '开发开源工具\n自述为独立开发者\n近期开始分享产品实践');
+    assert.deepEqual(view.profile?.memory.background?.evidenceIds, ['1', '3']);
+    assert.equal(view.profile?.memory.topics?.text, '关注 AI 辅助编程\n讨论实际开发中的效率');
+    assert.equal(view.profile?.memory.language?.text, '使用简洁中文说明经验');
+    assert.equal(view.profile?.memory.recent?.text, '发布工具更新\n交流开发过程');
+    assert.equal(view.profile?.account.bio, h.state.bio);
+    assert.deepEqual(view.profile?.evidenceIds, ['1', '2', '3']); assert.deepEqual(view.evidence.map(p => p.id), ['1', '2', '3']);
+    assert.deepEqual(new AccountRepository(h.db).profile('target-id'), view.profile);
+    assert.deepEqual(h.repo.get(h.w.id), workflow); assert.deepEqual(h.accounts.status(h.w.id), status);
+    assert.deepEqual(h.accounts.decisions(h.w.id), decisions); assert.deepEqual(h.repo.records(h.w.id), records);
+    assert.equal(h.repo.seen(h.w.id, '3'), false); assert.deepEqual(h.sent, []);
+  } finally { await h.service.stop(); h.db.close(); }
+});
+test('empty and metadata-only portraits fail once and preserve the saved portrait, evidence and workflow progress', async () => {
+  let portrait: unknown = { background: { text: '旧画像', evidenceIds: ['1'], kind: 'explicit' } }, requests = 0;
+  const h = harness(new BatchMatcher({ async complete(_provider: unknown, messages: { content: string }[]) {
+    if (JSON.parse(messages[1]!.content).rules.length) return '{"matches":[]}';
+    requests++; return JSON.stringify({ memory: portrait });
+  } } as unknown as AIGateway));
+  try {
+    await h.service.run(h.w.id); await h.service.rebuildProfile(h.w.id);
+    await h.service.editProfile(h.w.id, '背景：保留人工修正\n主题：旧主题');
+    const before = h.accounts.profile('target-id'), evidence = h.service.profile(h.w.id).evidence, posts = h.accounts.posts('target-id');
+    const workflow = h.repo.get(h.w.id), status = h.accounts.status(h.w.id), decisions = h.accounts.decisions(h.w.id), records = h.repo.records(h.w.id);
+    h.state.posts.push(post('3')); h.state.bio = 'Changed Profile';
+    for (const invalid of [{}, {
+      background: { builder: { evidenceIds: ['3'], kind: 'explicit', confidence: 0.9 }, metadata: { source: 'Profile', updatedAt: '2026-01-01' } },
+      topics: { evidenceIds: ['3'], kind: 'inferred' },
+      language: { style: { evidenceIds: ['3'], kind: 'explicit' } },
+      recent: { activity: { evidenceIds: ['3'], kind: 'explicit' } },
+    }]) {
+      portrait = invalid;
+      const previousRequests = requests, pages = h.pages.length, reads = h.state.profileReads;
+      await assert.rejects(h.service.rebuildProfile(h.w.id), /AI 未返回可读取的画像正文/);
+      assert.equal(requests, previousRequests + 1);
+      assert.deepEqual(h.pages.slice(pages), [{ cursor: undefined, surface: 'posts' }]); assert.equal(h.state.profileReads, reads + 1);
+      assert.deepEqual(h.accounts.profile('target-id'), before); assert.deepEqual(h.service.profile(h.w.id).evidence, evidence);
+      assert.deepEqual(h.accounts.posts('target-id'), posts);
+      assert.deepEqual(h.repo.get(h.w.id), workflow); assert.deepEqual(h.accounts.status(h.w.id), status);
+      assert.deepEqual(h.accounts.decisions(h.w.id), decisions); assert.deepEqual(h.repo.records(h.w.id), records);
+      assert.equal(h.repo.seen(h.w.id, '3'), false); assert.deepEqual(h.sent, []);
+    }
+  } finally { await h.service.stop(); h.db.close(); }
+});
 test('repeated refreshes share one operation and a concurrent task uses its committed portrait', async () => {
   const h = harness(), entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
   try {

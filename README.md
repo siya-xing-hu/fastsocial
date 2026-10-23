@@ -5,7 +5,7 @@ Fast Social 是一个供个人使用的 X/Twitter 辅助工具，由 Chrome 插�
 ## 核心功能
 
 - 使用完整的总结、发帖、回复 Skills 辅助沟通
-- 支持 OpenAI Chat Completions 与 Anthropic Messages 兼容服务
+- 支持 OpenAI Chat Completions、OpenAI Responses 与 Anthropic Messages 兼容服务
 - 提供支持流式输出的 AI 聊天助手
 - 支持 Google、DeepL 和 AI 翻译
 - Google 翻译限流时自动切换到 DeepL，并在设定时间后重新尝试 Google
@@ -85,6 +85,8 @@ Chrome 加载已解压扩展时选择 `dist/extension`。服务端产物为 `dis
 打开“插件设置”，从 **Form** 切换到 **JSON**，点击输入框右上角的复制图标。在另一浏览器打开同一页面，粘贴并点击“保存”即可。输入框下方提供“格式化”和“重置”；重置会还原当前配置，放弃未保存的编辑。JSON 包含翻译偏好、DeepL API Key、备用时长和翻译 Prompt；保存前会校验全部字段，错误时保留原配置。切回 Form 时也会先校验并保存 JSON。
 
 AI 服务、Skills、账号 Profile、X Cookie、Telegram 和监听规则存储在本地服务中，不属于这份浏览器基础配置；同一台电脑上的浏览器连接同一本地服务即可共享。
+
+使用 Responses 接口时，在“AI 服务”中添加或编辑服务，将“接口格式”选为“OpenAI Responses”，填写完整的 `/v1/responses` 地址、API Key 和模型名，保存后选择默认模型。自定义网关地址按填写值直接请求，不自动拼接路径；切换接口格式时会保留自定义地址，需要自行检查路径。该格式同时用于聊天、翻译、监听判断和画像生成。
 
 ## 本地 AI 监控服务
 

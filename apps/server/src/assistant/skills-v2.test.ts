@@ -147,6 +147,80 @@ test('routing sees skill discovery metadata and execution loads only the selecte
     assert.equal((await service.chat(input)).skill, 'post'); assert.equal(calls, 2);
   } finally { db.close(); }
 });
+test('routing accepts one known choice with model formatting while preserving plain text output', async t => {
+  const formats = [
+    { name: 'JSON string', wrap: (choice: string) => JSON.stringify(choice.toUpperCase()) },
+    { name: 'inline code', wrap: (choice: string) => '`' + choice + '`' },
+    { name: 'text fence', wrap: (choice: string) => '```text\n' + choice + '\n```' },
+    { name: 'slash command', wrap: (choice: string) => '/' + choice },
+    { name: 'skill object', wrap: (choice: string) => JSON.stringify({ skill: choice }) },
+  ];
+  for (const choice of ['chat', 'summary', 'post', 'reply'] as const) {
+    for (const format of formats) await t.test(`${choice}: ${format.name}`, async () => {
+      const db = openDatabase(':memory:');
+      try {
+        const accounts = new SettingsRepository(db).configuration;
+        accounts.saveAccount(account);
+        let routed = 0, generated = 0, profileReads = 0;
+        const content = '**原样正文**\n\n第二段。';
+        const service = new AssistantService(new AssistantRepository(db), accounts, { complete: async (_, messages) => {
+          if (messages[0].content.startsWith('将用户意图分类')) { routed++; return format.wrap(choice); }
+          generated++;
+          if (choice === 'chat') assert.doesNotMatch(messages[0].content, /已加载 Skill|运行时发帖约束/);
+          else assert.match(messages[0].content, new RegExp(`已加载 Skill：${choice}/SKILL.md`));
+          return content;
+        } }, { fetchAccount: async () => { profileReads++; return profile(); } });
+        const input = request(); delete input.skill;
+        input.context.target = { id: '123', author: '@author', text: '原帖', url: 'https://x.com/author/status/123' };
+        const result = await service.chat(input);
+        assert.equal(result.skill, choice === 'chat' ? undefined : choice);
+        assert.equal(result.content, content);
+        assert.equal(routed, 1); assert.equal(generated, 1);
+        assert.equal(profileReads, choice === 'post' || choice === 'reply' ? 1 : 0);
+      } finally { db.close(); }
+    });
+  }
+});
+test('formatted routing still rejects disabled skills before permission lookup or generation', async () => {
+  const db = openDatabase(':memory:');
+  try {
+    const accounts = new SettingsRepository(db).configuration;
+    accounts.saveAccount(account);
+    const skills = new AssistantRepository(db); skills.setEnabled('post', false);
+    let routed = 0, generated = 0, profileReads = 0;
+    const service = new AssistantService(skills, accounts, { complete: async (_, messages) => {
+      if (messages[0].content.startsWith('将用户意图分类')) {
+        routed++;
+        assert.ok(!JSON.parse(messages[1].content).availableSkills.some((skill: { name: string }) => skill.name === 'post'));
+        return '{"skill":"post"}';
+      }
+      generated++; return '不应生成';
+    } }, { fetchAccount: async () => { profileReads++; return profile(); } });
+    const input = request(); delete input.skill;
+    await assert.rejects(service.chat(input), /\/post 已停用/);
+    assert.equal(routed, 1); assert.equal(generated, 0); assert.equal(profileReads, 0);
+  } finally { db.close(); }
+});
+test('ambiguous or unknown routing never guesses a skill or reaches permission lookup or generation', async t => {
+  for (const raw of ['post or reply', '我选择 post，因为用户想发帖', '["post","reply"]', '{"skill":["post","reply"]}', '{"skill":"publish"}', '{"skill":"post"}\n{"skill":"reply"}', '```text\npost\n```\n```text\nreply\n```']) {
+    await t.test(raw, async () => {
+      const db = openDatabase(':memory:');
+      try {
+        const accounts = new SettingsRepository(db).configuration;
+        accounts.saveAccount(account);
+        let routed = 0, generated = 0, profileReads = 0;
+        const service = new AssistantService(new AssistantRepository(db), accounts, { complete: async (_, messages) => {
+          if (messages[0].content.startsWith('将用户意图分类')) { routed++; return raw; }
+          generated++; return '不应生成';
+        } }, { fetchAccount: async () => { profileReads++; return profile(); } });
+        const input = request(); delete input.skill;
+        input.context.target = { id: '123', author: '@author', text: '原帖', url: 'https://x.com/author/status/123' };
+        await assert.rejects(service.chat(input), /未能识别任务/);
+        assert.equal(routed, 1); assert.equal(generated, 0); assert.equal(profileReads, 0);
+      } finally { db.close(); }
+    });
+  }
+});
 test('repeated excess is rejected, blue-account long text is retained, and summaries have no posting limit', async () => {
   const db = openDatabase(':memory:');
   try {

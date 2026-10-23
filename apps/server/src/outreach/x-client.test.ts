@@ -164,6 +164,17 @@ test('AI classification rejects duplicate, omitted, invented and invalid decisio
   }
 });
 
+test('outreach classification shares explicit JSON wrappers without accepting ambiguous or invalid decisions', () => {
+  const posts = parseHomePosts(home([tweet('10', '2')]));
+  const json = '{"decisions":[{"postId":"10","status":"match","reason":"明确互关"}]}';
+  for (const raw of [`结果：\n\`\`\`json\n${json}\n\`\`\``, `<think>分析</think>\n${json}`])
+    assert.equal(parseOutreachDecisions(raw, posts)[0]?.status, 'match');
+  for (const body of [{}, { decisions: [] }, { decisions: [{ postId: 10, status: 'match', reason: '明确互关' }] },
+    { decisions: [{ postId: 'unknown', status: 'match', reason: '明确互关' }] }])
+    assert.throws(() => parseOutreachDecisions(`结果：\n\`\`\`json\n${JSON.stringify(body)}\n\`\`\``, posts), /互关 AI 判断/);
+  assert.throws(() => parseOutreachDecisions(`\`\`\`json\n${json}\n\`\`\`\n\`\`\`json\n${json}\n\`\`\``, posts), /互关 AI 判断/);
+});
+
 test('HTML rate-limit responses preserve Retry-After and authentication errors invalidate only selected Cookie', async () => {
   const db = openDatabase(':memory:');
   try {

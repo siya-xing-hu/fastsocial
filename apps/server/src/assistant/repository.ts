@@ -4,6 +4,7 @@ import { SKILL_KEYS, type AssistantSkill, type SkillKey } from "@fast-social/con
 import { loadBuiltinSkills, parseSkillDocument } from './skill-document.ts';
 import { SkillFiles, documentRevision, skillDirectory } from './skill-files.ts';
 import { ValidationError } from '../http/validation.ts';
+import { PostTemplateRepository } from './post-templates.ts';
 
 const legacyDefaults: Pick<AssistantSkill, 'key' | 'name' | 'description' | 'instructions'>[] = [
   { key: "summary", name: "总结", description: "提炼选中文本、原帖或已加载的讨论。", instructions: "优先总结选中文本；否则总结选定原帖及提供的讨论；没有选定原帖时概括已加载的帖子。区分作者观点、事实与推测，标注相关帖子的链接。只依据提供的内容，不声称读完完整时间线或未加载的讨论。简洁列出主题、要点和分歧。" },
@@ -12,10 +13,12 @@ const legacyDefaults: Pick<AssistantSkill, 'key' | 'name' | 'description' | 'ins
 ];
 
 export class AssistantRepository {
+  readonly templates: PostTemplateRepository;
   private db: DatabaseSync;
   private files: SkillFiles;
   constructor(db: DatabaseSync, directory = skillDirectory(db)) {
     this.db = db;
+    this.templates = new PostTemplateRepository(db);
     this.files = new SkillFiles(directory);
     const builtins = loadBuiltinSkills();
     const columns = (db.prepare('PRAGMA table_info(assistant_skills)').all() as { name: string }[]).map(c => c.name);

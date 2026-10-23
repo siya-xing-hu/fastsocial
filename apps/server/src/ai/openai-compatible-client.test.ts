@@ -318,3 +318,104 @@ test('a truncation retry shares the initial time budget', async t => {
   assert.equal(await client.complete({...input, timeoutMs: 100}), 'complete');
   assert.deepEqual(budgets, [100, 25]);
 });
+
+test('JSON gateway fallback recognizes media types regardless of letter case', async () => {
+  let calls = 0;
+  const client = new OpenAICompatibleClient(async () => {
+    calls++;
+    return new Response(JSON.stringify({ choices: [{ message: { content: 'Answer' }, finish_reason: 'stop' }] }), {
+      headers: { 'content-type': 'Application/JSON; Charset=UTF-8' },
+    });
+  });
+  assert.equal(await client.complete(input), 'Answer');
+  assert.equal(calls, 1);
+});
+
+test('Chat Completions reads only known text blocks in JSON and SSE without flattening metadata', async () => {
+  const content = [
+    { type: 'text', text: '  First\n' },
+    { type: 'reasoning', text: 'Private reasoning' },
+    { type: 'tool_call', text: 'Tool data', arguments: { text: 'Nested tool data' } },
+    { type: 'unknown', text: 'Unknown data' },
+    { text: 'Unlabelled metadata' },
+    { type: 'output_text', text: 'Second  ' },
+  ];
+  for (const transport of ['json', 'sse'] as const) {
+    let calls = 0;
+    const client = new OpenAICompatibleClient(async () => {
+      calls++;
+      return transport === 'json'
+        ? Response.json({ choices: [{ message: { content }, finish_reason: 'stop' }] })
+        : sse(`data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`);
+    });
+    assert.equal(await client.complete(input), '  First\nSecond  ');
+    const chunks: string[] = [];
+    await client.stream(input, chunk => { chunks.push(chunk); });
+    assert.deepEqual(chunks, ['  First\n', 'Second  ']);
+    assert.equal(calls, 2);
+  }
+});
+
+test('known Chat Completions text blocks require string text and invalid content is never retried', async () => {
+  for (const content of [
+    [{ type: 'text', text: { value: 'Nested text' } }],
+    [{ type: 'output_text', text: 42 }],
+    [{ type: 'text' }],
+    [{ type: 'text', text: null }],
+    { text: 'Object outside content blocks' },
+  ]) {
+    for (const transport of ['json', 'sse'] as const) {
+      let calls = 0;
+      const client = new OpenAICompatibleClient(async () => {
+        calls++;
+        return transport === 'json'
+          ? Response.json({ choices: [{ message: { content }, finish_reason: 'stop' }] })
+          : sse(`data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`);
+      });
+      await assert.rejects(client.complete(input), /内容.*格式无效/);
+      assert.equal(calls, 1);
+    }
+  }
+});
+
+test('JSON gateway fallback requires an explicit successful or truncated completion reason', async () => {
+  for (const apiFormat of ['openai', 'anthropic'] as const) {
+    for (const reason of [undefined, null, '', 'content_filter', 'tool_use']) {
+      let calls = 0;
+      const client = new OpenAICompatibleClient(async () => {
+        calls++;
+        return Response.json(apiFormat === 'openai'
+          ? { choices: [{ message: { content: '{"matches":[]}' }, finish_reason: reason }] }
+          : { content: [{ type: 'text', text: '{"matches":[]}' }], stop_reason: reason });
+      });
+      await assert.rejects(client.complete({ ...input, service: { ...service, apiFormat } }), /未.*结束/);
+      assert.equal(calls, 1);
+    }
+  }
+});
+
+test('complete and stream reject whitespace-only answers while preserving nonempty source text', async () => {
+  for (const apiFormat of ['openai', 'anthropic'] as const) {
+    for (const transport of ['json', 'sse'] as const) {
+      let calls = 0;
+      let text = ' \n\t ';
+      const client = new OpenAICompatibleClient(async () => {
+        calls++;
+        if (transport === 'sse') return apiFormat === 'openai' ? openAIStream(text) : anthropicStream(text);
+        return Response.json(apiFormat === 'openai'
+          ? { choices: [{ message: { content: text }, finish_reason: 'stop' }] }
+          : { content: [{ type: 'text', text }], stop_reason: 'end_turn' });
+      });
+      const completionInput = { ...input, service: { ...service, apiFormat } };
+      await assert.rejects(client.complete(completionInput), /空内容/);
+      await assert.rejects(client.stream(completionInput, () => {}), /空内容/);
+      assert.equal(calls, 2);
+      text = ' \nAnswer\n ';
+      assert.equal(await client.complete(completionInput), text);
+      let streamed = '';
+      await client.stream(completionInput, chunk => { streamed += chunk; });
+      assert.equal(streamed, text);
+      assert.equal(calls, 4);
+    }
+  }
+});
